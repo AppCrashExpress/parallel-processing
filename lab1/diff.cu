@@ -9,8 +9,11 @@ void read_vec(double* vec, unsigned int num_elements) {
 
 __global__
 void vec_diff(double* vec1, double* vec2, unsigned int num_elements) {
-    unsigned int i = blockDim.x * blockIdx.x + threadIdx.x;
-    vec1[i] -= vec2[i];
+    unsigned int thread_i = blockDim.x * blockIdx.x + threadIdx.x;
+    unsigned int stride   = blockDim.x * gridDim.x;
+    for (unsigned int i = thread_i; i < num_elements; i += stride) {
+        vec1[i] -= vec2[i];
+    }
 }
 
 int main() {
@@ -18,31 +21,28 @@ int main() {
     scanf("%u", &num_elements);
     size_t mem_size = num_elements * sizeof(double);
 
-    double *h_a = (double*) malloc(mem_size);
-    double *h_b = (double*) malloc(mem_size);
-    read_vec(h_a, num_elements);
-    read_vec(h_b, num_elements);
-
+    double *buffer = (double*) malloc(mem_size);
     double *d_a;
     double *d_b;
+
+    read_vec(buffer, num_elements);
     cudaMalloc(&d_a, mem_size);
+    cudaMemcpy(d_a, buffer, mem_size, cudaMemcpyHostToDevice);
+
+    read_vec(buffer, num_elements);
     cudaMalloc(&d_b, mem_size);
-    cudaMemcpy(d_a, h_a, mem_size, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_b, h_b, mem_size, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_b, buffer, mem_size, cudaMemcpyHostToDevice);
 
-    unsigned int blockSize = 512;
-    unsigned int gridSize  = num_elements / blockSize + 1;
-    vec_diff<<<gridSize, blockSize>>>(d_a, d_b, num_elements);
+    vec_diff<<<512, 512>>>(d_a, d_b, num_elements);
 
-    cudaMemcpy(h_a, d_a, mem_size, cudaMemcpyDeviceToHost);
+    cudaMemcpy(buffer, d_a, mem_size, cudaMemcpyDeviceToHost);
 
     for (unsigned int i = 0; i < num_elements; ++i) {
-        printf("%.10lf ", h_a[i]);
+        printf("%.10lf ", buffer[i]);
     }
     printf("\n");
 
-    free(h_a);
-    free(h_b);
+    free(buffer);
     cudaFree(d_a);
     cudaFree(d_b);
 }
