@@ -1,3 +1,4 @@
+#include <iostream>
 #include <stdio.h>
 #include <stdlib.h> 
 
@@ -12,12 +13,10 @@ do {																\
 } while(0)
 
 texture<uchar4, 2, cudaReadModeElementType> tex;
-const char INPUT_FILE[]  = "in.data";
-const char OUTPUT_FILE[] = "out.data";
 
 // Maybe replace with error type
-void read_file(uchar4 **image, int32_t *w_p, int32_t *h_p) {
-    FILE *input_file = fopen(INPUT_FILE, "rb");
+void read_file(uchar4 **image, int32_t *w_p, int32_t *h_p, const std::string& in_file) {
+    FILE *input_file = fopen(in_file.c_str(), "rb");
 
     fread(w_p, sizeof(int32_t), 1, input_file);
     fread(h_p, sizeof(int32_t), 1, input_file);
@@ -32,8 +31,8 @@ void read_file(uchar4 **image, int32_t *w_p, int32_t *h_p) {
     fclose(input_file);
 }
 
-void write_file(uchar4 *image, int32_t w, int32_t h) {
-	FILE *output_file = fopen(OUTPUT_FILE, "wb");
+void write_file(uchar4 *image, int32_t w, int32_t h, const std::string& out_file) {
+	FILE *output_file = fopen(out_file.c_str(), "wb");
 
 	fwrite(&w,    sizeof(int32_t), 1,     output_file);
 	fwrite(&h,    sizeof(int32_t), 1,     output_file);
@@ -95,10 +94,13 @@ void kernel(uchar4 *image, int32_t w, int32_t h) {
 }
 
 int main() {
+    std::string in_file, out_file;
+    std::cin >> in_file >> out_file;
+
     int32_t w, h;
     uchar4 *image;
 
-    read_file(&image, &w, &h);
+    read_file(&image, &w, &h, in_file);
 
     cudaArray *arr;
     cudaChannelFormatDesc ch = cudaCreateChannelDesc<uchar4>();
@@ -124,5 +126,5 @@ int main() {
 	CSC(cudaFreeArray(arr));
 	CSC(cudaFree(dev_image));
 
-    write_file(image, w, h);
+    write_file(image, w, h, out_file);
 }
