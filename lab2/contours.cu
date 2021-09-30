@@ -1,6 +1,6 @@
 #include <iostream>
-#include <stdio.h>
-#include <stdlib.h> 
+#include <fstream>
+#include <memory>
 
 #define CSC(call)  													\
 do {																\
@@ -14,31 +14,33 @@ do {																\
 
 texture<uchar4, 2, cudaReadModeElementType> tex;
 
-// Maybe replace with error type
-void read_file(uchar4 **image, int32_t *w_p, int32_t *h_p, const std::string& in_file) {
-    FILE *input_file = fopen(in_file.c_str(), "rb");
+void read_file(std::unique_ptr<uchar4[]>& image,
+               int32_t& w,
+               int32_t& h,
+               const std::string& in_file) {
+    std::ifstream input_file(in_file, std::ios::in | std::ios::binary);
 
-    fread(w_p, sizeof(int32_t), 1, input_file);
-    fread(h_p, sizeof(int32_t), 1, input_file);
+    input_file.read(reinterpret_cast<char*>(&w), sizeof(int32_t));
+    input_file.read(reinterpret_cast<char*>(&h), sizeof(int32_t));
 
-    int32_t w = *w_p;
-    int32_t h = *h_p;
+    image = std::unique_ptr<uchar4[]>(new uchar4[w * h]);
 
-    *image = (uchar4*) malloc(sizeof(uchar4) * w * h);
+    input_file.read(reinterpret_cast<char*>(image.get()), sizeof(uchar4) * w * h);
 
-    fread(*image, sizeof(uchar4), w * h, input_file);
-
-    fclose(input_file);
+    input_file.close();
 }
 
-void write_file(uchar4 *image, int32_t w, int32_t h, const std::string& out_file) {
-	FILE *output_file = fopen(out_file.c_str(), "wb");
+void write_file(const std::unique_ptr<uchar4[]>& image,
+                const int32_t& w,
+                const int32_t& h,
+                const std::string& out_file) {
+    std::ofstream output_file(out_file, std::ios::out | std::ios::binary);
 
-	fwrite(&w,    sizeof(int32_t), 1,     output_file);
-	fwrite(&h,    sizeof(int32_t), 1,     output_file);
-	fwrite(image, sizeof(uchar4),  w * h, output_file);
+    output_file.write(reinterpret_cast<const char*>(&w), sizeof(int32_t));
+    output_file.write(reinterpret_cast<const char*>(&h), sizeof(int32_t));
+    output_file.write(reinterpret_cast<const char*>(image.get()), sizeof(uchar4) * w * h);
 
-	fclose(output_file);
+    output_file.close();
 }
 
 __device__
@@ -98,14 +100,15 @@ int main() {
     std::cin >> in_file >> out_file;
 
     int32_t w, h;
-    uchar4 *image;
+    // ama big boy
+    std::unique_ptr<uchar4[]> image;
 
-    read_file(&image, &w, &h, in_file);
+    read_file(image, w, h, in_file);
 
     cudaArray *arr;
     cudaChannelFormatDesc ch = cudaCreateChannelDesc<uchar4>();
     CSC(cudaMallocArray(&arr, &ch, w, h));
-	CSC(cudaMemcpyToArray(arr, 0, 0, image, sizeof(uchar4) * w * h, cudaMemcpyHostToDevice));
+	CSC(cudaMemcpyToArray(arr, 0, 0, image.get(), sizeof(uchar4) * w * h, cudaMemcpyHostToDevice));
 
     tex.addressMode[0] = cudaAddressModeClamp;
 	tex.addressMode[1] = cudaAddressModeClamp;
@@ -119,7 +122,7 @@ int main() {
 
     kernel<<< dim3(32, 32), dim3(32, 32) >>>(dev_image, w, h);
 
-	CSC(cudaMemcpy(image, dev_image, sizeof(uchar4) * w * h, cudaMemcpyDeviceToHost));
+	CSC(cudaMemcpy(image.get(), dev_image, sizeof(uchar4) * w * h, cudaMemcpyDeviceToHost));
 
 	CSC(cudaUnbindTexture(tex));
 
