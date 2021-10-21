@@ -105,6 +105,11 @@ void reduce_gauss(double* dev_matrix_m,
             }
         }
 
+        if (max_col == m) {
+            // Cannot reduce further?
+            break;
+        }
+
         if (row != max_row) {
             gpu_swap_rows<<<64, 64>>>(dev_matrix_m, n, m, k, row, max_row);
         }

@@ -103,6 +103,11 @@ void reduce_gauss(matrix_p& matrix_m,
             }
         }
 
+        if (max_col == m) {
+            // Cannot reduce further?
+            break;
+        }
+
         for (long i = 0; i < (m + k); ++i) {
             for (long j = 0; j < n; ++j) {
                 std::cout << matrix_m[i * n + j] << ' ';
