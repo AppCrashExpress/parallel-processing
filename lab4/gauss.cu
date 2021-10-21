@@ -72,20 +72,34 @@ void gpu_diff_rows(double* matrix_m,
         long col = i * n;
         double val = matrix_m[col + max_row] / matrix_m[start_col * n + max_row];
 
-        for (long j = idx; j < n; j += stridex) {
-            // luigi look its an if in kernel
-            if (j == max_row) {
-                // Don't let it destroy itself
-                continue;
-            }
-
+        for (long j = idx + max_row + 1; j < n; j += stridex) {
             matrix_m[col + j] -= val * matrix_m[start_col * n + j];
         }
     }
 
 }
 
+__global__
+void gpu_normalize_rows(double* matrix_m,
+                    long n, long m, long k, long col, long row) {
+    long idx = blockDim.x * blockIdx.x + threadIdx.x;
+    long idy = blockDim.y * blockIdx.y + threadIdx.y;
+    long stridex = blockDim.x * gridDim.x;
+    long stridey = blockDim.y * gridDim.y;
+
+    double div = matrix_m[col * n + row];
+    
+    for (long i = idy + col + 1; i < (m + k); i += stridey) {
+        double temp = matrix_m[i * n + row];
+        
+        for (long j = idx; j < row; j += stridex) {
+            matrix_m[i * n + j] -= temp * matrix_m[col * n + j] / div;
+        }
+    }
+}
+
 void reduce_gauss(double* dev_matrix_m,
+                  std::vector<long>& nonzero_cols,
                   long n, long m, long k) {
 
     Comparator comp;
@@ -107,6 +121,7 @@ void reduce_gauss(double* dev_matrix_m,
             // Cannot reduce further?
             break;
         }
+        nonzero_cols.push_back(col);
 
         long max_row = max_ptr - col_ptr;
 
@@ -123,12 +138,20 @@ void reduce_gauss(double* dev_matrix_m,
 
 matrix_p solve(matrix_p&& matrix_m,
                long n, long m, long k) {
+    std::vector<long> nonzero_cols;
+    nonzero_cols.reserve(m);
+
     double* dev_matrix_m;
     size_t size = sizeof(double) * (m + k) * n;
     CSC(cudaMalloc(&dev_matrix_m, size));
     CSC(cudaMemcpy(dev_matrix_m, matrix_m.get(), size, cudaMemcpyHostToDevice));
 
-    reduce_gauss(dev_matrix_m, n, m, k);
+    reduce_gauss(dev_matrix_m, nonzero_cols, n, m, k);
+
+    for (long start_row = 1; start_row < nonzero_cols.size(); ++start_row) {
+        long start_col = nonzero_cols[start_row];
+        gpu_normalize_rows<<<dim3(8, 64), dim3(8, 64)>>>(dev_matrix_m, n, m, k, start_col, start_row);
+    }
 
     CSC(cudaMemcpy(matrix_m.get(), dev_matrix_m, size, cudaMemcpyDeviceToHost));
     CSC(cudaFree(dev_matrix_m));
