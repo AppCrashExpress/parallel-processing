@@ -69,11 +69,13 @@ void normalize_row(matrix_p& matrix_a, matrix_p& matrix_b, long n, long m, long 
     }
 }
 
-void diff_rows(matrix_p& matrix_m, const double * const diff_coeffs,
+void diff_rows(matrix_p& matrix_m,
                long n, long m, long k, long start_col, long max_row) {
-    for (long i = start_col; i < (m + k); ++i) {
+    std::cout << "Start_col: " << start_col << '\n';
+    std::cout << "Max_row:   " << max_row << '\n';
+    for (long i = start_col + 1; i < (m + k); ++i) {
         long col = i * n;
-        double val = matrix_m[col + max_row] / diff_coeffs[max_row];
+        double val = matrix_m[col + max_row] / matrix_m[start_col * n + max_row];
 
         for (long j = 0; j < n; ++j) {
             if (j == max_row) {
@@ -81,7 +83,7 @@ void diff_rows(matrix_p& matrix_m, const double * const diff_coeffs,
                 continue;
             }
 
-            matrix_m[col + j] -= val * diff_coeffs[j];
+            matrix_m[col + j] -= val * matrix_m[start_col * n + j];
         }
     }
 
@@ -89,7 +91,6 @@ void diff_rows(matrix_p& matrix_m, const double * const diff_coeffs,
 
 void reduce_gauss(matrix_p& matrix_m,
                   long n, long m, long k) {
-    double* diff_coeffs = new double[n];
 
     for (long row = 0; row < n; ++row) {
         long max_col = row;
@@ -115,15 +116,10 @@ void reduce_gauss(matrix_p& matrix_m,
             swap_rows(matrix_m, m, n, k, row, max_row);
         }
 
-        for (long i = 0; i < n; ++i) {
-            diff_coeffs[i] = matrix_m[max_col * n + i];
-        }
-
         // normalize_row(matrix_a, matrix_b, n, m, k, max_col, row);
-        diff_rows(matrix_m, diff_coeffs, n, m, k, max_col, row);
+        diff_rows(matrix_m, n, m, k, max_col, row);
     }
 
-    delete[] diff_coeffs;
 }
 
 matrix_p solve(matrix_p&& matrix_m,
