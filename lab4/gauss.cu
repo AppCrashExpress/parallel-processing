@@ -1,4 +1,4 @@
-#include <iostream>
+#include <stdio.h>
 #include <memory>
 #include <thrust/extrema.h>
 #include <thrust/device_vector.h>
@@ -28,21 +28,32 @@ bool is_close(double a, double b) {
     return std::fabs(a - b) < EPS;
 }
 
-void read_matrix(std::istream& is, matrix_p& matrix_m,
+void read_matrix(matrix_p& matrix_m,
                  long& n, long& m, long& k) {
-    is >> n >> m >> k;
+    scanf("%ld %ld %ld", &n, &m, &k);
     matrix_m = matrix_p(new double[(m + k) * n]);
 
     for (long i = 0; i < n; ++i) {
         for (long j = 0; j < m; ++j) {
-            is >> matrix_m[j * n + i];
+            scanf("%lf", &matrix_m[(j * n) + i]);
         }
     }
 
     for (long i = 0; i < n; ++i) {
         for (long j = m; j < (m + k); ++j) {
-            is >> matrix_m[j * n + i];
+            scanf("%lf", &matrix_m[(j * n) + i]);
         }
+    }
+}
+
+void write_matrix(matrix_p& matrix_x,
+                  long m, long k) {
+
+    for (long j = 0; j < m; ++j) {
+        for (long i = 0; i < k; ++i) {
+            printf("%.10lf ", matrix_x[i * m + j]);
+        }
+        printf("\n");
     }
 }
 
@@ -190,16 +201,8 @@ int main() {
     // matrix_m for matrix_merged
     matrix_p matrix_m, matrix_x;
     
-    read_matrix(std::cin, matrix_m, n, m, k);
+    read_matrix(matrix_m, n, m, k);
     matrix_x = solve(std::move(matrix_m), n, m, k);
 
-    std::cout.setf(std::ios::fixed);
-    std::cout.precision(10);
-    for (long j = 0; j < m; ++j) {
-        for (long i = 0; i < k; ++i) {
-            std::cout << matrix_x[i * m + j] << ' ';
-        }
-        std::cout << '\n';
-    }
-    std::cout << '\n';
+    write_matrix(matrix_x, m, k);
 }

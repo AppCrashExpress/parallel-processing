@@ -1,5 +1,4 @@
-#include <iostream>
-#include <iomanip>
+#include <stdio.h>
 #include <memory>
 #include <utility>
 #include <cmath>
@@ -8,24 +7,34 @@ const double EPS = 1e-7;
 
 using matrix_p = std::unique_ptr<double[]>;
 
-void read_matrix(std::istream& is, matrix_p& matrix_m,
+void read_matrix(matrix_p& matrix_m,
                  long& n, long& m, long& k) {
-    is >> n >> m >> k;
+    scanf("%ld %ld %ld", &n, &m, &k);
     matrix_m = matrix_p(new double[(m + k) * n]);
 
     for (long i = 0; i < n; ++i) {
         for (long j = 0; j < m; ++j) {
-            is >> matrix_m[j * n + i];
+            scanf("%lf", &matrix_m[(j * n) + i]);
         }
     }
 
     for (long i = 0; i < n; ++i) {
         for (long j = m; j < (m + k); ++j) {
-            is >> matrix_m[j * n + i];
+            scanf("%lf", &matrix_m[(j * n) + i]);
         }
     }
 }
 
+void write_matrix(matrix_p& matrix_x,
+                  long m, long k) {
+
+    for (long j = 0; j < m; ++j) {
+        for (long i = 0; i < k; ++i) {
+            printf("%.10lf ", matrix_x[i * m + j]);
+        }
+        printf("\n");
+    }
+}
 bool is_close(double a, double b) {
     return std::fabs(a - b) < EPS;
 }
@@ -71,8 +80,6 @@ void normalize_row(matrix_p& matrix_a, matrix_p& matrix_b, long n, long m, long 
 
 void diff_rows(matrix_p& matrix_m,
                long n, long m, long k, long start_col, long max_row) {
-    std::cout << "Start_col: " << start_col << '\n';
-    std::cout << "Max_row:   " << max_row << '\n';
     for (long i = start_col + 1; i < (m + k); ++i) {
         long col = i * n;
         double val = matrix_m[col + max_row] / matrix_m[start_col * n + max_row];
@@ -109,15 +116,6 @@ void reduce_gauss(matrix_p& matrix_m,
             break;
         }
 
-        for (long i = 0; i < (m + k); ++i) {
-            for (long j = 0; j < n; ++j) {
-                std::cout << matrix_m[i * n + j] << ' ';
-            }
-            std::cout << '\n';
-        }
-        std::cout << '\n';
-
-
         if (row != max_row) {
             swap_rows(matrix_m, m, n, k, row, max_row);
         }
@@ -133,14 +131,6 @@ void reduce_gauss(matrix_p& matrix_m,
 matrix_p solve(matrix_p&& matrix_m,
                long n, long m, long k) {
     reduce_gauss(matrix_m, n, m, k);
-
-    for (long i = 0; i < (m + k); ++i) {
-        for (long j = 0; j < n; ++j) {
-            std::cout << matrix_m[i * n + j] << ' ';
-        }
-        std::cout << '\n';
-    }
-    std::cout << '\n';
 
     matrix_p matrix_x = matrix_p(new double[m * k]);
 
@@ -176,16 +166,8 @@ int main() {
     // matrix_m for matrix_merged
     matrix_p matrix_m, matrix_x;
     
-    read_matrix(std::cin, matrix_m, n, m, k);
+    read_matrix(matrix_m, n, m, k);
     matrix_x = solve(std::move(matrix_m), n, m, k);
 
-    std::cout.setf(std::ios::fixed);
-    std::cout.precision(10);
-    for (long j = 0; j < m; ++j) {
-        for (long i = 0; i < k; ++i) {
-            std::cout << matrix_x[i * m + j] << ' ';
-        }
-        std::cout << '\n';
-    }
-    std::cout << '\n';
+    write_matrix(matrix_x, m, k);
 }
