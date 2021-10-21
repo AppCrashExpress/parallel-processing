@@ -64,15 +64,15 @@ __global__
 void gpu_diff_rows(double* matrix_m,
                long n, long m, long k, long start_col, long max_row) {
     long idx = blockDim.x * blockIdx.x + threadIdx.x;
-    long stridex = blockDim.x * gridDim.x;
     long idy = blockDim.y * blockIdx.y + threadIdx.y;
+    long stridex = blockDim.x * gridDim.x;
     long stridey = blockDim.y * gridDim.y;
 
-    for (long i = idx + start_col + 1; i < (m + k); i += stridex) {
+    for (long i = idy + start_col + 1; i < (m + k); i += stridey) {
         long col = i * n;
         double val = matrix_m[col + max_row] / matrix_m[start_col * n + max_row];
 
-        for (long j = idy; j < n; j += stridey) {
+        for (long j = idx; j < n; j += stridex) {
             // luigi look its an if in kernel
             if (j == max_row) {
                 // Don't let it destroy itself
