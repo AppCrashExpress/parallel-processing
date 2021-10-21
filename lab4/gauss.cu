@@ -89,32 +89,34 @@ void reduce_gauss(double* dev_matrix_m,
                   long n, long m, long k) {
 
     Comparator comp;
+    long col = 0;
 
     for (long row = 0; row < n; ++row) {
         thrust::device_ptr<double> col_ptr, max_ptr;
-        long max_col = row;
-        long max_row = row;
         
-        for (; max_col < m; ++max_col) {
-            col_ptr = thrust::device_pointer_cast(dev_matrix_m + max_col * n);
+        for (; col < m; ++col) {
+            col_ptr = thrust::device_pointer_cast(dev_matrix_m + col * n);
             max_ptr = thrust::max_element(col_ptr + row, col_ptr + n, comp);
 
             if (!is_close(*max_ptr, 0.0)) {
-                max_row = max_ptr - col_ptr;
                 break;
             }
         }
 
-        if (max_col == m) {
+        if (col == m) {
             // Cannot reduce further?
             break;
         }
+
+        long max_row = max_ptr - col_ptr;
 
         if (row != max_row) {
             gpu_swap_rows<<<64, 64>>>(dev_matrix_m, n, m, k, row, max_row);
         }
 
-        gpu_diff_rows<<<dim3(8, 64), dim3(8, 64)>>>(dev_matrix_m, n, m, k, max_col, row);
+        gpu_diff_rows<<<dim3(8, 64), dim3(8, 64)>>>(dev_matrix_m, n, m, k, col, row);
+
+        ++col;
     }
 
 }

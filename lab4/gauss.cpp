@@ -92,18 +92,19 @@ void diff_rows(matrix_p& matrix_m,
 void reduce_gauss(matrix_p& matrix_m,
                   long n, long m, long k) {
 
+    long col = 0;
+
     for (long row = 0; row < n; ++row) {
-        long max_col = row;
-        long max_row = row;
+        long max_row = 0;
         
-        for (; max_col < m; ++max_col) {
-            max_row = argmax_col_range(matrix_m, n, max_col, row, n);
-            if (!is_close(matrix_m[n * max_col + max_row], 0.0)) {
+        for (; col < m; ++col) {
+            max_row = argmax_col_range(matrix_m, n, col, row, n);
+            if (!is_close(matrix_m[n * col + max_row], 0.0)) {
                 break;
             }
         }
 
-        if (max_col == m) {
+        if (col == m) {
             // Cannot reduce further?
             break;
         }
@@ -122,7 +123,9 @@ void reduce_gauss(matrix_p& matrix_m,
         }
 
         // normalize_row(matrix_a, matrix_b, n, m, k, max_col, row);
-        diff_rows(matrix_m, n, m, k, max_col, row);
+        diff_rows(matrix_m, n, m, k, col, row);
+
+        ++col;
     }
 
 }
