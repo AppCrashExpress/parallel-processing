@@ -109,7 +109,7 @@ void reduce_gauss(double* dev_matrix_m,
             gpu_swap_rows<<<64, 64>>>(dev_matrix_m, n, m, k, row, max_row);
         }
 
-        gpu_diff_rows<<<dim3(64, 64), dim3(64, 64)>>>(dev_matrix_m, n, m, k, max_col, row);
+        gpu_diff_rows<<<dim3(8, 64), dim3(8, 64)>>>(dev_matrix_m, n, m, k, max_col, row);
     }
 
 }
