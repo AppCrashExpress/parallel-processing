@@ -16,9 +16,7 @@ do {                                                          \
     }                                                         \
 } while(0)
 
-// 7 * 8 = 56 bits
-// align to 64
-struct __align__(64) ClassData {
+struct ClassData {
     double mean[3];
     double inv_corr[3][3];
 };
