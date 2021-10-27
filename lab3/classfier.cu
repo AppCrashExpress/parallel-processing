@@ -60,7 +60,6 @@ void kernel(uchar4 *image, int32_t size, short class_count) {
     for(; id < size; id += stride) {
         uchar4& pixel = image[id];
 
-        // Fix initial values somehow
         short  max_class_i = 0;
         double max_distance = -DBL_MAX;
 
@@ -125,7 +124,7 @@ int main() {
         }
 
         for (const auto& p : pixels) {
-            // Upper bound of mean should be 255 * 2^19 = 133693440
+            // Upper bound of sum should be 255 * 2^19 = 133693440
             // Which should be within max range of double
             for (int i = 0; i < 3; ++i) {
                 current_class.mean[i] += p[i];
