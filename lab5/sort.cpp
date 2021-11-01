@@ -80,8 +80,23 @@ void sort_block_bitonic(ElemT *array, ElemT start, ElemT end) {
 }
 
 void sort(ArrayPtr& array_ptr, ElemT& size, size_t block_size) {
+    ElemT *array = array_ptr.get();
+
     for (ElemT i = 0; i < size; i += block_size) {
-        sort_block_bitonic(array_ptr.get(), i, i + block_size);
+        sort_block_bitonic(array, i, i + block_size);
+    }
+
+    ElemT block_count = size / block_size;
+    for (ElemT pass = 0; pass < block_count; ++pass) {
+        // Even 
+        for (ElemT i = 0; i < block_count - 1; i += 2) {
+            merge_bitonic(array, i * block_size, (i + 2) * block_size);
+        }
+
+        // Odd
+        for (ElemT i = 1; i < block_count - 1; i += 2) {
+            merge_bitonic(array, i * block_size, (i + 2) * block_size);
+        }
     }
 }
 
