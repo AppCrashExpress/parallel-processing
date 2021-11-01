@@ -12,23 +12,13 @@ const size_t BLOCK_SIZE = 8; // Must be power of 2
 
 
 void read_array(ArrayPtr& array_ptr, ElemT& size, std::istream& is) {
-    // is.read(reinterpret_cast<char*>(&size), sizeof(ElemT));
-    // array_ptr = ArrayPtr(new ElemT[size]);
-    // is.read(reinterpret_cast<char*>(array_ptr.get()), size * sizeof(ElemT));
-
-    std::cin >> size;
+    is.read(reinterpret_cast<char*>(&size), sizeof(ElemT));
     array_ptr = ArrayPtr(new ElemT[size]);
-    for (ElemT i = 0; i < size; ++i) {
-        std::cin >> array_ptr[i];
-    }
+    is.read(reinterpret_cast<char*>(array_ptr.get()), size * sizeof(ElemT));
 }
 
 void write_array(const ArrayPtr& array_ptr, const ElemT& size, std::ostream& os) {
-    // os.write(reinterpret_cast<char*>(array_ptr.get()), size * sizeof(ElemT));
-    for (ElemT i = 0; i < size; ++i) {
-        os << array_ptr[i] << ' ';
-    }
-    os << '\n';
+    os.write(reinterpret_cast<char*>(array_ptr.get()), size * sizeof(ElemT));
 }
 
 ElemT pad_array(ArrayPtr& array_ptr, ElemT real_size) {
