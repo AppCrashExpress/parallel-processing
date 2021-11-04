@@ -37,55 +37,77 @@ ElemT pad_array(ArrayPtr& array_ptr, ElemT real_size) {
     return padded_size;
 }
 
-void merge_bitonic(int *array, ElemT start, ElemT end) {
-    ElemT order = end - start;
-    ElemT half_len = (end - start) / 2;
-    for (ElemT i = 0; i < half_len; ++i) {
-        ElemT l = start + i;
-        ElemT r = end - i - 1;
+void sort_bitonic(ElemT *array, ElemT size, ElemT order, ElemT dist) {
+    // Make amount of threads half the size of block
+    // Find current block by index of block
 
-        if (array[r] < array[l]) {
-            std::swap(array[r], array[l]);
-        }
-    }
+    for (ElemT i = 0; i < size; ++i) {
+        // Why XOR? i is in first half, then this will be i + dist
+        // If i in in second half, then thil will be i - dist
+        // Natural check for threads
+        ElemT r = i ^ dist;
 
-    for (ElemT step = order / 2; step > 1; step /= 2) {
-        for (ElemT subblock = start; subblock < end; subblock += step) {
-            for (ElemT i = 0; i < step / 2; ++i) {
-                if (array[subblock + step / 2 + i] < array[subblock + i]) {
-                    std::swap(array[subblock + step / 2 + i], array[subblock + i]);
-                }
-            }
+        if (i < r) {
+            if ((i & order) == 0 && array[i] > array[r]) std::swap(array[i], array[r]);
+            if ((i & order) != 0 && array[i] < array[r]) std::swap(array[i], array[r]);
         }
     }
 }
 
-void sort_block_bitonic(ElemT *array, ElemT start, ElemT end) {
-    ElemT len = end - start;
-    for (ElemT k = 1; k < len; k *= 2){ 
-        for (ElemT i = start; i < end; i += 2 * k) {
-            merge_bitonic(array, i, i + 2 * k);
+void correct_bitonic(ElemT *array, ElemT size, ElemT order, ElemT dist) {
+    for (ElemT i = 0; i < size; ++i) {
+        ElemT r = i ^ dist;
+
+        if (i < r) {
+            ElemT min = std::min(array[i], array[r]);
+            ElemT max = std::max(array[i], array[r]);
+
+            array[i] = min;
+            array[r] = max;
         }
+    }
+}
+
+void merge_bitonic(ElemT *array, ElemT size, size_t block_size, ElemT block_no, ElemT offset) {
+    ElemT block_mid = block_size / 2;
+    for (ElemT i = 0; i < block_mid; ++i) {
+        ElemT l = offset + block_size * block_no + i;
+        ElemT r = offset + block_size * (block_no + 1) - (i + 1);
+        
+        ElemT min = std::min(array[l], array[r]);
+        ElemT max = std::max(array[l], array[r]);
+
+        array[l] = min;
+        array[r] = max;
     }
 }
 
 void sort(ArrayPtr& array_ptr, ElemT& size, size_t block_size) {
     ElemT *array = array_ptr.get();
 
-    for (ElemT i = 0; i < size; i += block_size) {
-        sort_block_bitonic(array, i, i + block_size);
+    for (ElemT k = 2; k < block_size; k *= 2) {
+        for (ElemT j = k / 2; j > 0; j /= 2) {
+            sort_bitonic(array, size, k, j);
+        }
+    }
+    for (ElemT j = block_size / 2; j > 0; j /= 2) {
+        sort_bitonic(array, size, block_size, j);
     }
 
     ElemT block_count = size / block_size;
     for (ElemT pass = 0; pass < block_count; ++pass) {
-        // Even 
         for (ElemT i = 0; i < block_count - 1; i += 2) {
-            merge_bitonic(array, i * block_size, (i + 2) * block_size);
+            merge_bitonic(array, size, block_size * 2, i / 2, 0);
+        }
+        for (ElemT j = block_size / 2; j > 0; j /= 2) {
+            correct_bitonic(array, size, block_size, j);
         }
 
-        // Odd
         for (ElemT i = 1; i < block_count - 1; i += 2) {
-            merge_bitonic(array, i * block_size, (i + 2) * block_size);
+            merge_bitonic(array, size, block_size * 2, i / 2, block_size);
+        }
+        for (ElemT j = block_size / 2; j > 0; j /= 2) {
+            correct_bitonic(array, size, block_size, j);
         }
     }
 }
