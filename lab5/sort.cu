@@ -128,6 +128,10 @@ void print_array(ElemT *array, ElemT size) {
 void sort(ArrayPtr& array_ptr, ElemT size, size_t block_size) {
     ElemT block_count = size / block_size;
 
+    if (block_count == 0) {
+        return;
+    }
+
     ElemT *d_array;
     size_t mem_size = size * sizeof(ElemT);
     CSC(cudaMalloc(&d_array, mem_size));
