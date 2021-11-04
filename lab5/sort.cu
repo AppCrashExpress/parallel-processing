@@ -48,74 +48,76 @@ ElemT pad_array(ArrayPtr& array_ptr, ElemT real_size) {
 }
 
 __device__
-void swap(ElemT *array, ElemT i, ElemT j) {
+void swap(__volatile__ ElemT *array, ElemT i, ElemT j) {
     ElemT t = array[i];
     array[i] = array[j];
     array[j] = t;
 }
 
 __global__
-void sort_bitonic(ElemT *array, ElemT size) {
+void presort_blocks_bitonic(ElemT *array, ElemT size) {
     int block_size = blockDim.x;
     int block_no   = blockIdx.x;
     int idx = block_size * block_no + threadIdx.x;
+    int i   = threadIdx.x;
+
+    __shared__ ElemT sharr[BLOCK_SIZE];
+
+    sharr[i] = array[idx];
+    __syncthreads();
 
     for (ElemT k = 2; k <= block_size; k *= 2) {
         for (ElemT j = k / 2; j > 0; j /= 2) {
-            ElemT r = idx ^ j;
+            ElemT r = i ^ j;
 
-            if (idx < r) {
-                if ((idx & k) == 0 && array[idx] > array[r]) swap(array, idx, r);
-                if ((idx & k) != 0 && array[idx] < array[r]) swap(array, idx, r);
+            if (i < r) {
+                if ((i & k) == 0 && sharr[i] > sharr[r]) swap(sharr, i, r);
+                if ((i & k) != 0 && sharr[i] < sharr[r]) swap(sharr, i, r);
             }
 
             __syncthreads();
         }
     }
+
+    array[idx] = sharr[i];
+    __syncthreads();
+
 }
 
 __global__
-void correct_bitonic(ElemT *array, ElemT size) {
+void merge_pairs_bitonic(ElemT *array, ElemT size, ElemT offset) {
     int block_size = blockDim.x;
     int block_no   = blockIdx.x;
-    int idx = block_size * block_no + threadIdx.x;
+    int idx = offset + block_size * block_no + threadIdx.x;
+    int i   = threadIdx.x;
+    int rev_i = block_size - 1 - i + block_size / 2;
+
+    __shared__ ElemT sharr[BLOCK_SIZE * 2];
+
+    if (i < block_size / 2) {
+        sharr[i] = array[idx];
+    } else {
+        sharr[rev_i] = array[idx];
+    }
+    __syncthreads();
 
     for (ElemT j = block_size / 2; j > 0; j /= 2) {
-        ElemT r = idx ^ j;
+        ElemT r = i ^ j;
 
-        if (idx < r) {
-            ElemT min_val = min(array[idx], array[r]);
-            ElemT max_val = max(array[idx], array[r]);
+        if (i < r) {
+            ElemT min_val = min(sharr[i], sharr[r]);
+            ElemT max_val = max(sharr[i], sharr[r]);
 
-            array[idx] = min_val;
-            array[r]   = max_val;
+            sharr[i] = min_val;
+            sharr[r] = max_val;
         }
 
         __syncthreads();
     }
-}
 
-__global__
-void merge_bitonic(ElemT *array, ElemT size, ElemT offset) {
-    int block_size = blockDim.x * 2;
-    int block_no   = blockIdx.x;
+    array[idx] = sharr[i];
+    __syncthreads();
 
-    int block_mid  = block_size / 2;
-
-    ElemT i = threadIdx.x;
-
-    if (i >= block_mid) {
-        return;
-    }
-
-    ElemT l = offset + block_size * block_no + i;
-    ElemT r = offset + block_size * (block_no + 1) - (i + 1);
-    
-    ElemT min_val = min(array[l], array[r]);
-    ElemT max_val = max(array[l], array[r]);
-
-    array[l] = min_val;
-    array[r] = max_val;
 }
 
 void print_array(ElemT *array, ElemT size) {
@@ -137,7 +139,7 @@ void sort(ArrayPtr& array_ptr, ElemT size, size_t block_size) {
     CSC(cudaMalloc(&d_array, mem_size));
     CSC(cudaMemcpy(d_array, array_ptr.get(), mem_size, cudaMemcpyHostToDevice));
 
-    sort_bitonic<<<block_count, block_size>>>(d_array, size);
+    presort_blocks_bitonic<<<block_count, block_size>>>(d_array, size);
     CSC(cudaPeekAtLastError());
 
     size_t even_blocks = block_count / 2;
@@ -146,19 +148,16 @@ void sort(ArrayPtr& array_ptr, ElemT size, size_t block_size) {
 
         // Even 
         if (even_blocks != 0) {
-            merge_bitonic<<<even_blocks, block_size>>>(d_array, size, 0);
-            CSC(cudaPeekAtLastError());
-            correct_bitonic<<<block_count, block_size>>>(d_array, size);
+            merge_pairs_bitonic<<<even_blocks, 2 * block_size>>>(d_array, size, 0);
             CSC(cudaPeekAtLastError());
         }
 
         // Odd
         if (odd_blocks != 0) {
-            merge_bitonic<<<odd_blocks, block_size>>>(d_array, size, block_size);
-            CSC(cudaPeekAtLastError());
-            correct_bitonic<<<block_count, block_size>>>(d_array, size);
+            merge_pairs_bitonic<<<odd_blocks, 2 * block_size>>>(d_array, size, block_size);
             CSC(cudaPeekAtLastError());
         }
+
     }
 
     CSC(cudaMemcpy(array_ptr.get(), d_array, mem_size, cudaMemcpyDeviceToHost));
