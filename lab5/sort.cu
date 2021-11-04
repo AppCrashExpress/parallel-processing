@@ -18,7 +18,7 @@ using ElemT = int;
 using ArrayPtr = std::unique_ptr<ElemT[]>;
 
 const ElemT MAX_VALUE = std::numeric_limits<ElemT>::max();
-const size_t BLOCK_SIZE = 8; // Must be power of 2
+const size_t BLOCK_SIZE = 256; // Must be power of 2
 
 
 void read_array(ArrayPtr& array_ptr, ElemT& size, std::istream& is) {
@@ -68,6 +68,8 @@ void sort_bitonic(ElemT *array, ElemT size) {
                 if ((idx & k) == 0 && array[idx] > array[r]) swap(array, idx, r);
                 if ((idx & k) != 0 && array[idx] < array[r]) swap(array, idx, r);
             }
+
+            __syncthreads();
         }
     }
 }
@@ -88,6 +90,8 @@ void correct_bitonic(ElemT *array, ElemT size) {
             array[idx] = min_val;
             array[r]   = max_val;
         }
+
+        __syncthreads();
     }
 }
 
