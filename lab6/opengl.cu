@@ -49,7 +49,7 @@ struct Player {
     float dyaw;
     float dpitch;
 
-    const float top_speed = 0.05;
+    const float top_speed = 0.1;
 };
 
 namespace {
@@ -322,20 +322,13 @@ void keys(unsigned char key, int x, int y) {
 }
 
 void mouse(int x, int y) {
-    static int x_prev = w / 2, y_prev = h / 2;
-    float norm_coef = 0.005;
-    float dx = norm_coef * (x - x_prev);
-    float dy = norm_coef * (y - y_prev);
-
-    player.dyaw -= dx;
-    player.dpitch -= dy;
-    x_prev = x;
-    y_prev = y;
-
-    if ((x < 20) || (y < 20) || (x > w - 20) || (y > h - 20)) {
+    if (x != w/2 || y != h/2) {
         glutWarpPointer(w / 2, h / 2);
-        x_prev = w / 2;
-        y_prev = h / 2;
+        float norm_coef = 0.001;
+        float dx = norm_coef * (x - w/2);
+        float dy = norm_coef * (y - h/2);
+        player.dyaw -= dx;
+        player.dpitch -= dy;
     }
 }
 
@@ -377,7 +370,7 @@ int main(int argc, char *argv[]) {
     glutPassiveMotionFunc(mouse);
     glutReshapeFunc(reshape);
 
-    glutSetCursor(GLUT_CURSOR_NONE);
+    // glutSetCursor(GLUT_CURSOR_NONE);
 
     int wt, ht;
     FILE *in = fopen("in.data", "rb");
