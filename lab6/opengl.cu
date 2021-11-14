@@ -1,0 +1,428 @@
+#include <iostream>
+#include <math.h>
+#include <random>
+
+#include <GL/glew.h>
+#include <GL/freeglut.h>
+
+#include <cuda_runtime.h>
+#include <cuda_gl_interop.h>
+
+#define ESC 27
+#define SPACEBAR 32
+
+#define sqr3(x) ((x)*(x)*(x))
+#define sqr(x)  ((x)*(x))
+
+typedef unsigned char uchar;
+
+struct Particle {
+    float x;
+    float y;
+    float z;
+
+    float dx;
+    float dy;
+    float dz;
+
+    float q;
+};
+
+struct Player {
+    Player() {
+        x = -1.5;
+        y = -1.5;
+        z = 1.0;
+    }
+
+    float x;
+    float y;
+    float z;
+
+    float dx;
+    float dy;
+    float dz;
+
+    float yaw;
+    float pitch;
+
+    float dyaw;
+    float dpitch;
+
+    const float top_speed = 0.05;
+};
+
+namespace {
+    int w = 1024;
+    int h = 648;
+
+    const unsigned int particle_count = 4;
+    const unsigned int floor_percision = 100;
+    const float half_len = 15.0; // Half the length of cube edge
+
+    cudaGraphicsResource *res;
+    GLuint floor_texture;
+    GLuint quad_texture;
+    GLuint vbo;
+
+    std::vector<Particle> particles;
+    Particle *d_particles;
+
+    GLUquadric *quadratic;
+
+    Player player;
+}
+
+__global__ 
+void recalc_particle_velocity(Particle *particles, unsigned int count, 
+                float w, float e0, float dt, float k) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int offsetx = blockDim.x * gridDim.x;
+
+    for (unsigned int p = idx; p < count; p += offsetx) {
+        Particle& part = particles[p];
+
+        part.dx *= w;
+        part.dy *= w;
+        part.dz *= w;
+
+        for (unsigned int p_other = 0; p_other < count + 1; ++p_other) {
+            if (p_other == p) {
+                continue;
+            }
+            Particle &other = particles[p_other];
+
+            float l = sqrt(sqr(part.x - other.x) + sqr(part.y - other.y) + sqr(part.z - other.z));
+            part.dx += other.q * part.q * k * (part.x - other.x) / (l * l * l + e0) * dt;
+            part.dy += other.q * part.q * k * (part.y - other.y) / (l * l * l + e0) * dt;
+            part.dz += other.q * part.q * k * (part.z - other.z) / (l * l * l + e0) * dt;
+        }
+
+        part.dx += part.q*part.q * k * (part.x - half_len) / (sqr3(fabs(part.x - half_len)) + e0) * dt;
+        part.dx += part.q*part.q * k * (part.x + half_len) / (sqr3(fabs(part.x + half_len)) + e0) * dt;
+
+        part.dy += part.q*part.q * k * (part.y - half_len) / (sqr3(fabs(part.y - half_len)) + e0) * dt;
+        part.dy += part.q*part.q * k * (part.y + half_len) / (sqr3(fabs(part.y + half_len)) + e0) * dt;
+
+        part.dz += part.q*part.q * k * (part.z - 2 * half_len) / (sqr3(fabs(part.z - 2 * half_len)) + e0) * dt;
+        part.dz += part.q*part.q * k * (part.z + 0.0) / (sqr3(fabs(part.z + 0.0)) + e0) * dt;
+
+        part.x += part.dx * dt;
+        part.y += part.dy * dt;
+        part.z += part.dz * dt;
+    }
+}
+
+__global__ void calc_floor(uchar4 *data, Particle item, float t) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int idy = blockIdx.y * blockDim.y + threadIdx.y;
+    int offsetx = blockDim.x * gridDim.x;
+    int offsety = blockDim.y * gridDim.y;
+    int i, j;
+    float x, y, fg, fb;
+
+    for (i = idx; i < floor_percision; i += offsetx) {
+        for (j = idy; j < floor_percision; j += offsety) {
+            x = (2.0 * i / (floor_percision - 1.0) - 1.0) * half_len;
+            y = (2.0 * j / (floor_percision - 1.0) - 1.0) * half_len;
+            fb = 100.0 * ( sin(0.1 * x*x + t) + cos(0.1 * y*y + t * 0.6) + sin(0.1 * x*x + 0.1 * y*y + t * 0.3) );
+            fg = 10000.0 * item.q / ( sqr(x - item.x) + sqr(y - item.y) + sqr(item.z) + 0.001 );
+            fg = min(max(0.0f, fg), 255.0f);
+            fb = min(max(0.0f, fb), 255.0f);
+            data[j * floor_percision + i] = make_uchar4(0, (int)fg, (int)fb, 255);
+        }
+    }
+}
+
+void display() {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+
+    gluPerspective(90.0, (GLfloat)w/(GLfloat)h, 0.1, 100.0);
+
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    float cos_pitch = cos(player.pitch);
+    gluLookAt(player.x, player.y, player.z,
+              player.x + cos(player.yaw) * cos_pitch,
+              player.y + sin(player.yaw) * cos_pitch,
+              player.z + sin(player.pitch),
+              0.0f, 0.0f, 1.0f);
+
+    glBindTexture(GL_TEXTURE_2D, quad_texture);
+    static float angle = 0.0;
+    for (const auto& p : particles) {
+        glPushMatrix();
+            glTranslatef(p.x, p.y, p.z); 
+            glRotatef(angle, 0.0, 0.0, 1.0);
+            gluSphere(quadratic, 0.625f, 8, 8);
+        glPopMatrix();
+    }
+    angle += 0.15;
+
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, vbo);
+    glBindTexture(GL_TEXTURE_2D, floor_texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, 3, (GLsizei)floor_percision, (GLsizei)floor_percision, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+
+    glBegin(GL_QUADS);
+        glTexCoord2f(0.0, 0.0);
+        glVertex3f(-half_len, -half_len, 0.0);
+
+        glTexCoord2f(1.0, 0.0);
+        glVertex3f(half_len, -half_len, 0.0);
+
+        glTexCoord2f(1.0, 1.0);
+        glVertex3f(half_len, half_len, 0.0);
+
+        glTexCoord2f(0.0, 1.0);
+        glVertex3f(-half_len, half_len, 0.0);
+    glEnd();
+
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glLineWidth(2);
+    glColor3f(0.5f, 0.5f, 0.5f);
+    glBegin(GL_LINES);
+        glVertex3f(-half_len, -half_len, 0.0);
+        glVertex3f(-half_len, -half_len, 2.0 * half_len);
+
+        glVertex3f(half_len, -half_len, 0.0);
+        glVertex3f(half_len, -half_len, 2.0 * half_len);
+
+        glVertex3f(half_len, half_len, 0.0);
+        glVertex3f(half_len, half_len, 2.0 * half_len);
+
+        glVertex3f(-half_len, half_len, 0.0);
+        glVertex3f(-half_len, half_len, 2.0 * half_len);
+    glEnd();
+
+    glBegin(GL_LINE_LOOP);
+        glVertex3f(-half_len, -half_len, 0.0);
+        glVertex3f( half_len, -half_len, 0.0);
+        glVertex3f( half_len,  half_len, 0.0);
+        glVertex3f(-half_len,  half_len, 0.0);
+    glEnd();
+
+    glBegin(GL_LINE_LOOP);
+        glVertex3f(-half_len, -half_len, 2.0 * half_len);
+        glVertex3f( half_len, -half_len, 2.0 * half_len);
+        glVertex3f( half_len,  half_len, 2.0 * half_len);
+        glVertex3f(-half_len,  half_len, 2.0 * half_len);
+    glEnd();
+
+    glColor3f(1.0f, 1.0f, 1.0f);
+
+    glutSwapBuffers();
+}
+
+void update() {
+    const float speed = player.top_speed;
+    float v = sqrt(player.dx * player.dx + player.dy * player.dy + player.dz * player.dz);
+    if (v > speed) {
+        float norm = speed / v;
+        player.dx *= norm;
+        player.dy *= norm;
+        player.dz *= norm;
+    }
+
+    float slow_down = 0.99;
+    player.x += player.dx;
+    player.y += player.dy;
+    player.z += player.dz;
+    player.dx *= slow_down;
+    player.dy *= slow_down;
+    player.dz *= slow_down;
+
+    if (player.z < 1.0) {
+        player.z = 1.0;
+        player.dz = 0.0;
+    }
+
+    if (fabs(player.dpitch) + fabs(player.dyaw) > 0.00001) {
+        player.yaw += player.dyaw;
+        player.pitch += player.dpitch;
+        player.pitch = min(M_PI / 2.0 - 0.0001, max(-M_PI / 2.0 + 0.0001, player.pitch));
+        player.dyaw = player.dpitch = 0.0;
+    }
+
+    float w = 0.9999, e0 = 1e-3, dt = 0.01, k = 50.0;
+
+    cudaMemcpy(d_particles, particles.data(), sizeof(Particle) * particles.size(), cudaMemcpyHostToDevice);
+    Particle player_particle;
+    player_particle.x = player.x;
+    player_particle.y = player.y;
+    player_particle.z = player.z;
+    player_particle.q = 10;
+    cudaMemcpy(d_particles + particles.size(), &player_particle, sizeof(Particle), cudaMemcpyHostToDevice);
+
+    recalc_particle_velocity<<<256, 256>>>(d_particles, particles.size(), w, e0, dt, k);
+
+    cudaMemcpy(particles.data(), d_particles, sizeof(Particle) * particles.size(), cudaMemcpyDeviceToHost);
+
+    static float t = 0.0;
+    uchar4 *dev_data;
+    size_t size;
+    cudaGraphicsMapResources(1, &res, 0);
+    cudaGraphicsResourceGetMappedPointer((void**)&dev_data, &size, res);
+    calc_floor<<<dim3(32, 32), dim3(32, 8)>>>(dev_data, particles[0], t);
+    cudaGraphicsUnmapResources(1, &res, 0);
+    t += 0.01;
+
+    glutPostRedisplay();
+}
+
+void keys(unsigned char key, int x, int y) {
+    float top_speed = player.top_speed;
+
+    switch(key) {
+      case 'w': {
+        float cos_pitch = cos(player.pitch);
+        player.dx += cos(player.yaw) * cos_pitch * top_speed;
+        player.dy += sin(player.yaw) * cos_pitch * top_speed;
+        player.dz += sin(player.pitch) * top_speed;
+        break;
+      }
+      case 's': {
+        float cos_pitch = cos(player.pitch);
+        player.dx -= cos(player.yaw) * cos_pitch * top_speed;
+        player.dy -= sin(player.yaw) * cos_pitch * top_speed;
+        player.dz -= sin(player.pitch) * top_speed;
+        break;
+      }
+      case 'a': {
+        player.dx += -sin(player.yaw) * top_speed;
+        player.dy += cos(player.yaw) * top_speed;
+        break;
+      }
+      case 'd': {
+        player.dx += sin(player.yaw) * top_speed;
+        player.dy += -cos(player.yaw) * top_speed;
+        break;
+      }
+      case SPACEBAR: {
+        player.dx = 0;
+        player.dy = 0;
+        player.dz = 0;
+        break;
+      }
+      case ESC: {
+        cudaGraphicsUnregisterResource(res);
+        glDeleteTextures(1, &floor_texture);
+        glDeleteTextures(1, &quad_texture);
+        glDeleteBuffers(1, &vbo);
+        gluDeleteQuadric(quadratic);
+        cudaFree(d_particles);
+        exit(0);
+        break;
+      }
+    }
+}
+
+void mouse(int x, int y) {
+    static int x_prev = w / 2, y_prev = h / 2;
+    float norm_coef = 0.005;
+    float dx = norm_coef * (x - x_prev);
+    float dy = norm_coef * (y - y_prev);
+
+    player.dyaw -= dx;
+    player.dpitch -= dy;
+    x_prev = x;
+    y_prev = y;
+
+    if ((x < 20) || (y < 20) || (x > w - 20) || (y > h - 20)) {
+        glutWarpPointer(w / 2, h / 2);
+        x_prev = w / 2;
+        y_prev = h / 2;
+    }
+}
+
+void reshape(int w_new, int h_new) {
+    w = w_new;
+    h = h_new;
+    glViewport(0, 0, w, h);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+}
+
+std::vector<Particle> 
+fill_with_random_particles(unsigned int particle_count) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<float> dist(-half_len, half_len);
+
+    std::vector<Particle> particles(particle_count);
+
+    for (auto& p : particles) {
+        p.x = dist(gen);
+        p.y = dist(gen);
+        p.z = half_len + dist(gen);
+        p.q = 1;
+    }
+
+    return particles;
+}
+
+int main(int argc, char *argv[]) {
+    glutInit(&argc, argv);
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA);
+    glutInitWindowSize(w, h);
+    glutCreateWindow("Particle simulator 2021");
+
+    glutIdleFunc(update);
+    glutDisplayFunc(display);
+    glutKeyboardFunc(keys);
+    glutPassiveMotionFunc(mouse);
+    glutReshapeFunc(reshape);
+
+    glutSetCursor(GLUT_CURSOR_NONE);
+
+    int wt, ht;
+    FILE *in = fopen("in.data", "rb");
+    fread(&wt, sizeof(int), 1, in);
+    fread(&ht, sizeof(int), 1, in);
+    uchar *data = (uchar*) malloc(sizeof(uchar) * wt * ht * 4);
+    fread(data, sizeof(uchar), wt * ht * 4, in);
+    fclose(in);
+
+    glGenTextures(1, &quad_texture);
+    glBindTexture(GL_TEXTURE_2D, quad_texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, 3, (GLsizei)wt, (GLsizei)ht, 0, GL_RGBA, GL_UNSIGNED_BYTE, (void*)data);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    free(data);
+
+    quadratic = gluNewQuadric();
+    gluQuadricTexture(quadratic, GL_TRUE);
+
+    glGenTextures(1, &floor_texture);
+    glBindTexture(GL_TEXTURE_2D, floor_texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glEnable(GL_TEXTURE_2D);
+    glShadeModel(GL_SMOOTH);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClearDepth(1.0f);
+    glDepthFunc(GL_LEQUAL);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+
+    glewInit();
+    glGenBuffers(1, &vbo);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, vbo);
+    glBufferData(GL_PIXEL_UNPACK_BUFFER, 
+                 floor_percision * floor_percision * sizeof(uchar4), 
+                 NULL,
+                 GL_DYNAMIC_DRAW);
+    cudaGraphicsGLRegisterBuffer(&res, vbo, cudaGraphicsMapFlagsWriteDiscard);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+
+    particles = fill_with_random_particles(particle_count);
+    cudaMalloc(&d_particles, sizeof(Particle) * (particle_count + 1));
+
+    glutMainLoop();
+}
