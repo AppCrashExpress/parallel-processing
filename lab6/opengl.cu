@@ -49,7 +49,7 @@ struct Player {
     float dyaw;
     float dpitch;
 
-    const float top_speed = 0.1;
+    const float top_speed = 0.3;
 };
 
 
@@ -60,7 +60,7 @@ namespace {
 
     bool keystates[256] = {};
 
-    const unsigned int particle_count = 4;
+    const unsigned int particle_count = 50;
     const unsigned int floor_percision = 100;
     const float half_len = 15.0; // Half the length of cube edge
 
@@ -339,7 +339,7 @@ void shoot_cam_particle() {
     cam_particle.dy = speed * sin(player.yaw) * cos_pitch;
     cam_particle.dz = speed * sin(player.pitch);
 
-    cam_particle.q = 10;
+    cam_particle.q = 50;
 }
 
 void process_cam_particle(float dt) {
@@ -347,7 +347,7 @@ void process_cam_particle(float dt) {
     cam_particle.y += cam_particle.dy * dt;
     cam_particle.z += cam_particle.dz * dt;
 
-    float box_limit = half_len + 20.0;
+    float box_limit = half_len + 100.0;
     if (abs(cam_particle.x) >= box_limit || 
             abs(cam_particle.y) >= box_limit ||
             abs(cam_particle.z) >= half_len + box_limit) {
@@ -387,14 +387,14 @@ void update() {
         player.dyaw = player.dpitch = 0.0;
     }
 
-    float w = 0.9999, e0 = 1e-3, dt = 0.01, z_shift = 0.75, k = 50.0, gravity = 10.0;
+    float w = 0.999, e0 = 1e-3, dt = 0.01, z_shift = 0.75, k = 50.0, gravity = 10.0;
 
     process_cam_particle(dt);
     Particle player_particle;
     player_particle.x = player.x;
     player_particle.y = player.y;
     player_particle.z = player.z;
-    player_particle.q = 50;
+    player_particle.q = 10;
 
     cudaMemcpy(d_particles, particles.data(), sizeof(Particle) * particles.size(), cudaMemcpyHostToDevice);
 
