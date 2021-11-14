@@ -83,7 +83,8 @@ namespace {
 
 __global__ 
 void recalc_particle_velocity(Particle *particles, unsigned int count, 
-                float w, float e0, float dt, float k) {
+            Particle cam_part, Particle player_part,
+            float w, float e0, float dt, float k) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int offsetx = blockDim.x * gridDim.x;
 
@@ -94,26 +95,57 @@ void recalc_particle_velocity(Particle *particles, unsigned int count,
         part.dy *= w;
         part.dz *= w;
 
-        for (unsigned int p_other = 0; p_other < count + 2; ++p_other) {
+        float dx_sum = 0;
+        float dy_sum = 0;
+        float dz_sum = 0;
+        float l;
+        float coef;
+
+        // Other particles
+        for (unsigned int p_other = 0; p_other < count; ++p_other) {
             if (p_other == p) {
                 continue;
             }
             Particle &other = particles[p_other];
 
-            float l = sqrt(sqr(part.x - other.x) + sqr(part.y - other.y) + sqr(part.z - other.z));
-            part.dx += other.q * part.q * k * (part.x - other.x) / (l * l * l + e0) * dt;
-            part.dy += other.q * part.q * k * (part.y - other.y) / (l * l * l + e0) * dt;
-            part.dz += other.q * part.q * k * (part.z - other.z) / (l * l * l + e0) * dt;
+            l = sqrt(sqr(part.x - other.x) + sqr(part.y - other.y) + sqr(part.z - other.z));
+            coef = other.q / (l * l * l + e0);
+            dx_sum += coef * (part.x - other.x);
+            dy_sum += coef * (part.y - other.y);
+            dz_sum += coef * (part.z - other.z);
         }
 
-        part.dx += part.q*part.q * k * (part.x - half_len) / (sqr3(fabs(part.x - half_len)) + e0) * dt;
-        part.dx += part.q*part.q * k * (part.x + half_len) / (sqr3(fabs(part.x + half_len)) + e0) * dt;
+        // Walls
+        dx_sum += part.q * (part.x - half_len) / (sqr3(fabs(part.x - half_len)) + e0);
+        dx_sum += part.q * (part.x + half_len) / (sqr3(fabs(part.x + half_len)) + e0);
 
-        part.dy += part.q*part.q * k * (part.y - half_len) / (sqr3(fabs(part.y - half_len)) + e0) * dt;
-        part.dy += part.q*part.q * k * (part.y + half_len) / (sqr3(fabs(part.y + half_len)) + e0) * dt;
+        dy_sum += part.q * (part.y - half_len) / (sqr3(fabs(part.y - half_len)) + e0);
+        dy_sum += part.q * (part.y + half_len) / (sqr3(fabs(part.y + half_len)) + e0);
 
-        part.dz += part.q*part.q * k * (part.z - 2 * half_len) / (sqr3(fabs(part.z - 2 * half_len)) + e0) * dt;
-        part.dz += part.q*part.q * k * (part.z + 0.0) / (sqr3(fabs(part.z + 0.0)) + e0) * dt;
+        dz_sum += part.q * (part.z - 2 * half_len) / (sqr3(fabs(part.z - 2 * half_len)) + e0);
+        dz_sum += part.q * (part.z + 0.0) / (sqr3(fabs(part.z + 0.0)) + e0);
+
+        // Cam
+        l = sqrt(sqr(part.x - cam_part.x) + sqr(part.y - cam_part.y) + sqr(part.z - cam_part.z));
+        coef = cam_part.q / (l * l * l + e0);
+        dx_sum += coef * (part.x - cam_part.x);
+        dy_sum += coef * (part.y - cam_part.y);
+        dz_sum += coef * (part.z - cam_part.z);
+
+        // Player
+        l = sqrt(sqr(part.x - player_part.x) + sqr(part.y - player_part.y) + sqr(part.z - player_part.z));
+        coef = player_part.q / (l * l * l + e0);
+        dx_sum += coef * (part.x - player_part.x);
+        dy_sum += coef * (part.y - player_part.y);
+        dz_sum += coef * (part.z - player_part.z);
+
+        dx_sum *= part.q * k * dt;
+        dy_sum *= part.q * k * dt;
+        dz_sum *= part.q * k * dt;
+
+        part.dx += dx_sum;
+        part.dy += dy_sum;
+        part.dz += dz_sum;
 
         float new_x = part.x + part.dx * dt;
         float new_y = part.y + part.dy * dt;
@@ -127,7 +159,7 @@ void recalc_particle_velocity(Particle *particles, unsigned int count,
 
 __global__
 void calc_floor(uchar4 *data, Particle *particles, unsigned int count,
-        float e0, float z_shift, float k) {
+        Particle cam_part, float e0, float z_shift, float k) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int idy = blockIdx.y * blockDim.y + threadIdx.y;
     int offsetx = blockDim.x * gridDim.x;
@@ -138,10 +170,11 @@ void calc_floor(uchar4 *data, Particle *particles, unsigned int count,
             float x = (2.0 * i / (floor_percision - 1.0) - 1.0) * half_len;
             float y = (2.0 * j / (floor_percision - 1.0) - 1.0) * half_len;
             float voltage = 0;
-            for (unsigned int p = 0; p < count + 1; ++p) {
+            for (unsigned int p = 0; p < count; ++p) {
                 Particle &part = particles[p];
                 voltage += part.q / (sqr(part.x - x) + sqr(part.y - y) + sqr(part.z - z_shift) + e0);
             }
+            voltage += cam_part.q / (sqr(cam_part.x - x) + sqr(cam_part.y - y) + sqr(cam_part.z - z_shift) + e0);
             voltage *= k;
             data[j * floor_percision + i] = make_uchar4(min((int)voltage, 255), 0, 0, 255);
         }
@@ -306,7 +339,7 @@ void shoot_cam_particle() {
     cam_particle.dy = speed * sin(player.yaw) * cos_pitch;
     cam_particle.dz = speed * sin(player.pitch);
 
-    cam_particle.q = 50;
+    cam_particle.q = 10;
 }
 
 void process_cam_particle(float dt) {
@@ -354,33 +387,31 @@ void update() {
         player.dyaw = player.dpitch = 0.0;
     }
 
-    float w = 0.9999, e0 = 1e-3, dt = 0.01, k = 50.0;
+    float w = 0.9999, e0 = 1e-3, dt = 0.01, z_shift = 0.75, k = 50.0;
 
     process_cam_particle(dt);
-
-    cudaMemcpy(d_particles, particles.data(), sizeof(Particle) * particles.size(), cudaMemcpyHostToDevice);
     Particle player_particle;
     player_particle.x = player.x;
     player_particle.y = player.y;
     player_particle.z = player.z;
-    player_particle.q = 10;
-    cudaMemcpy(d_particles + particles.size(), &cam_particle, sizeof(Particle), cudaMemcpyHostToDevice);
-    cudaMemcpy(d_particles + particles.size() + 1, &player_particle, sizeof(Particle), cudaMemcpyHostToDevice);
+    player_particle.q = 50;
 
-    recalc_particle_velocity<<<256, 256>>>(d_particles, particles.size(), w, e0, dt, k);
+    cudaMemcpy(d_particles, particles.data(), sizeof(Particle) * particles.size(), cudaMemcpyHostToDevice);
+
+    recalc_particle_velocity<<<256, 256>>>(d_particles, particles.size(), 
+            cam_particle, player_particle, w, e0, dt, k);
 
     cudaMemcpy(particles.data(), d_particles, sizeof(Particle) * particles.size(), cudaMemcpyDeviceToHost);
 
-    static float t = 0.0;
     uchar4 *dev_data;
     size_t size;
     cudaGraphicsMapResources(1, &res, 0);
     cudaGraphicsResourceGetMappedPointer((void**)&dev_data, &size, res);
 
-    calc_floor<<<dim3(32, 32), dim3(32, 8)>>>(dev_data, d_particles, particles.size(), e0, 0.75, k);
+    calc_floor<<<dim3(32, 32), dim3(32, 8)>>>(dev_data, d_particles, particles.size(),
+            cam_particle, e0, z_shift, k);
 
     cudaGraphicsUnmapResources(1, &res, 0);
-    t += 0.01;
 
     glutPostRedisplay();
 }
@@ -515,7 +546,7 @@ int main(int argc, char *argv[]) {
     particles = fill_with_random_particles(particle_count);
     init_cam_particle();
     // Two more for camera shot particle and for player particle
-    cudaMalloc(&d_particles, sizeof(Particle) * (particle_count + 2));
+    cudaMalloc(&d_particles, sizeof(Particle) * particle_count);
 
     glutMainLoop();
 }
