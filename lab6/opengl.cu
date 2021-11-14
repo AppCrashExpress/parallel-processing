@@ -117,23 +117,25 @@ void recalc_particle_velocity(Particle *particles, unsigned int count,
     }
 }
 
-__global__ void calc_floor(uchar4 *data, Particle item, float t) {
+__global__
+void calc_floor(uchar4 *data, Particle *particles, unsigned int count,
+        float e0, float z_shift, float k) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int idy = blockIdx.y * blockDim.y + threadIdx.y;
     int offsetx = blockDim.x * gridDim.x;
     int offsety = blockDim.y * gridDim.y;
-    int i, j;
-    float x, y, fg, fb;
 
-    for (i = idx; i < floor_percision; i += offsetx) {
-        for (j = idy; j < floor_percision; j += offsety) {
-            x = (2.0 * i / (floor_percision - 1.0) - 1.0) * half_len;
-            y = (2.0 * j / (floor_percision - 1.0) - 1.0) * half_len;
-            fb = 100.0 * ( sin(0.1 * x*x + t) + cos(0.1 * y*y + t * 0.6) + sin(0.1 * x*x + 0.1 * y*y + t * 0.3) );
-            fg = 10000.0 * item.q / ( sqr(x - item.x) + sqr(y - item.y) + sqr(item.z) + 0.001 );
-            fg = min(max(0.0f, fg), 255.0f);
-            fb = min(max(0.0f, fb), 255.0f);
-            data[j * floor_percision + i] = make_uchar4(0, (int)fg, (int)fb, 255);
+    for (int i = idx; i < floor_percision; i += offsetx) {
+        for (int j = idy; j < floor_percision; j += offsety) {
+            float x = (2.0 * i / (floor_percision - 1.0) - 1.0) * half_len;
+            float y = (2.0 * j / (floor_percision - 1.0) - 1.0) * half_len;
+            float voltage = 0;
+            for (unsigned int p = 0; p < count + 1; ++p) {
+                Particle &part = particles[p];
+                voltage += part.q / (sqr(part.x - x) + sqr(part.y - y) + sqr(part.z - z_shift) + e0);
+            }
+            voltage *= k;
+            data[j * floor_percision + i] = make_uchar4(min((int)voltage, 255), 0, 0, 255);
         }
     }
 }
@@ -351,7 +353,9 @@ void update() {
     size_t size;
     cudaGraphicsMapResources(1, &res, 0);
     cudaGraphicsResourceGetMappedPointer((void**)&dev_data, &size, res);
-    calc_floor<<<dim3(32, 32), dim3(32, 8)>>>(dev_data, particles[0], t);
+
+    calc_floor<<<dim3(32, 32), dim3(32, 8)>>>(dev_data, d_particles, particles.size(), e0, 0.75, k);
+
     cudaGraphicsUnmapResources(1, &res, 0);
     t += 0.01;
 
