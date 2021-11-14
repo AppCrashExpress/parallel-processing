@@ -84,7 +84,7 @@ namespace {
 __global__ 
 void recalc_particle_velocity(Particle *particles, unsigned int count, 
             Particle cam_part, Particle player_part,
-            float w, float e0, float dt, float k) {
+            float w, float e0, float dt, float k, float grav) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
     int offsetx = blockDim.x * gridDim.x;
 
@@ -145,7 +145,7 @@ void recalc_particle_velocity(Particle *particles, unsigned int count,
 
         part.dx += dx_sum;
         part.dy += dy_sum;
-        part.dz += dz_sum;
+        part.dz += dz_sum - grav * dt;
 
         float new_x = part.x + part.dx * dt;
         float new_y = part.y + part.dy * dt;
@@ -387,7 +387,7 @@ void update() {
         player.dyaw = player.dpitch = 0.0;
     }
 
-    float w = 0.9999, e0 = 1e-3, dt = 0.01, z_shift = 0.75, k = 50.0;
+    float w = 0.9999, e0 = 1e-3, dt = 0.01, z_shift = 0.75, k = 50.0, gravity = 10.0;
 
     process_cam_particle(dt);
     Particle player_particle;
@@ -399,7 +399,7 @@ void update() {
     cudaMemcpy(d_particles, particles.data(), sizeof(Particle) * particles.size(), cudaMemcpyHostToDevice);
 
     recalc_particle_velocity<<<256, 256>>>(d_particles, particles.size(), 
-            cam_particle, player_particle, w, e0, dt, k);
+            cam_particle, player_particle, w, e0, dt, k, gravity);
 
     cudaMemcpy(particles.data(), d_particles, sizeof(Particle) * particles.size(), cudaMemcpyDeviceToHost);
 
