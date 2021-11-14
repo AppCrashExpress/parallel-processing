@@ -1,4 +1,6 @@
 #include <iostream>
+#include <fstream>
+#include <memory>
 #include <math.h>
 #include <random>
 
@@ -13,8 +15,6 @@
 
 #define sqr3(x) ((x)*(x)*(x))
 #define sqr(x)  ((x)*(x))
-
-typedef unsigned char uchar;
 
 struct Particle {
     float x;
@@ -52,6 +52,8 @@ struct Player {
     const float top_speed = 0.1;
 };
 
+
+
 namespace {
     int w = 1024;
     int h = 648;
@@ -76,6 +78,8 @@ namespace {
 
     Player player;
 }
+
+
 
 __global__ 
 void recalc_particle_velocity(Particle *particles, unsigned int count, 
@@ -417,8 +421,24 @@ fill_with_random_particles(unsigned int particle_count) {
     return particles;
 }
 
-int main(int argc, char *argv[]) {
-    glutInit(&argc, argv);
+void read_file(std::unique_ptr<unsigned char[]>& data,
+               int& w,
+               int& h,
+               const std::string& in_file) {
+    std::ifstream input_file(in_file, std::ios::in | std::ios::binary);
+
+    input_file.read(reinterpret_cast<char*>(&w), sizeof(int));
+    input_file.read(reinterpret_cast<char*>(&h), sizeof(int));
+
+    data = std::unique_ptr<unsigned char[]>(new unsigned char[4 * w * h]);
+
+    input_file.read(reinterpret_cast<char*>(data.get()), sizeof(unsigned char) * 4 * w * h);
+
+    input_file.close();
+}
+
+void setup_glut(int *main_argc, char **main_argv) {
+    glutInit(main_argc, main_argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA);
     glutInitWindowSize(w, h);
     glutCreateWindow("Particle simulator 2021");
@@ -431,23 +451,27 @@ int main(int argc, char *argv[]) {
     glutMouseFunc(mouse_press);
     glutReshapeFunc(reshape);
 
-    // glutSetCursor(GLUT_CURSOR_NONE);
+    glutSetCursor(GLUT_CURSOR_NONE);
+}
 
+void setup_gl() {
+    glEnable(GL_TEXTURE_2D);
+    glShadeModel(GL_SMOOTH);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+    glClearDepth(1.0f);
+    glDepthFunc(GL_LEQUAL);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_CULL_FACE);
+
+    std::unique_ptr<unsigned char[]> data;
     int wt, ht;
-    FILE *in = fopen("in.data", "rb");
-    fread(&wt, sizeof(int), 1, in);
-    fread(&ht, sizeof(int), 1, in);
-    uchar *data = (uchar*) malloc(sizeof(uchar) * wt * ht * 4);
-    fread(data, sizeof(uchar), wt * ht * 4, in);
-    fclose(in);
+    read_file(data, wt, ht, "in.data");
 
     glGenTextures(1, &quad_texture);
     glBindTexture(GL_TEXTURE_2D, quad_texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, 3, (GLsizei)wt, (GLsizei)ht, 0, GL_RGBA, GL_UNSIGNED_BYTE, (void*)data);
+    glTexImage2D(GL_TEXTURE_2D, 0, 3, (GLsizei)wt, (GLsizei)ht, 0, GL_RGBA, GL_UNSIGNED_BYTE, (void*)data.get());
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-
-    free(data);
 
     quadratic = gluNewQuadric();
     gluQuadricTexture(quadratic, GL_TRUE);
@@ -456,14 +480,6 @@ int main(int argc, char *argv[]) {
     glBindTexture(GL_TEXTURE_2D, floor_texture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-    glEnable(GL_TEXTURE_2D);
-    glShadeModel(GL_SMOOTH);
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClearDepth(1.0f);
-    glDepthFunc(GL_LEQUAL);
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_CULL_FACE);
 
     glewInit();
     glGenBuffers(1, &vbo);
@@ -474,6 +490,11 @@ int main(int argc, char *argv[]) {
                  GL_DYNAMIC_DRAW);
     cudaGraphicsGLRegisterBuffer(&res, vbo, cudaGraphicsMapFlagsWriteDiscard);
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+}
+
+int main(int argc, char *argv[]) {
+    setup_glut(&argc, argv);
+    setup_gl();
 
     particles = fill_with_random_particles(particle_count);
     init_cam_particle();
