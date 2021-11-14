@@ -269,9 +269,10 @@ void process_keys() {
         player.dy += -cos(player.yaw) * top_speed;
     }
     if (keystates[SPACEBAR]) {
-        player.dx = 0;
-        player.dy = 0;
-        player.dz = 0;
+        player.dz += top_speed;
+    }
+    if (keystates['c']) {
+        player.dz -= top_speed;
     }
     if (keystates[ESC]) {
         cudaGraphicsUnregisterResource(res);
@@ -292,6 +293,20 @@ void init_cam_particle() {
     cam_particle.dx = 0;
     cam_particle.dy = 0;
     cam_particle.dz = 0;
+}
+
+void shoot_cam_particle() {
+    cam_particle.x = player.x;
+    cam_particle.y = player.y;
+    cam_particle.z = player.z;
+
+    float speed = 30.0;
+    float cos_pitch = cos(player.pitch);
+    cam_particle.dx = speed * cos(player.yaw) * cos_pitch;
+    cam_particle.dy = speed * sin(player.yaw) * cos_pitch;
+    cam_particle.dz = speed * sin(player.pitch);
+
+    cam_particle.q = 50;
 }
 
 void process_cam_particle(float dt) {
@@ -382,17 +397,17 @@ void mouse(int x, int y) {
 }
 
 void mouse_press(int button, int state, int x, int y) {
-    cam_particle.x = player.x;
-    cam_particle.y = player.y;
-    cam_particle.z = player.z;
+    if (state != GLUT_DOWN) {
+        return;
+    }
 
-    float speed = 30.0;
-    float cos_pitch = cos(player.pitch);
-    cam_particle.dx = speed * cos(player.yaw) * cos_pitch;
-    cam_particle.dy = speed * sin(player.yaw) * cos_pitch;
-    cam_particle.dz = speed * sin(player.pitch);
-
-    cam_particle.q = 50;
+    if (button == GLUT_LEFT_BUTTON) {
+        shoot_cam_particle();
+    } else if (button == GLUT_RIGHT_BUTTON) {
+        player.dx = 0;
+        player.dy = 0;
+        player.dz = 0;
+    }
 }
 
 void reshape(int w_new, int h_new) {
@@ -447,6 +462,7 @@ void setup_glut(int *main_argc, char **main_argv) {
     glutDisplayFunc(display);
     glutKeyboardFunc(key_down);
     glutKeyboardUpFunc(key_up);
+    glutMotionFunc(mouse);
     glutPassiveMotionFunc(mouse);
     glutMouseFunc(mouse_press);
     glutReshapeFunc(reshape);
