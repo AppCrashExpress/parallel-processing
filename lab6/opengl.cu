@@ -67,10 +67,12 @@ namespace {
     GLuint quad_texture;
     GLuint vbo;
 
+    GLUquadric *quadratic;
+
     std::vector<Particle> particles;
     Particle *d_particles;
 
-    GLUquadric *quadratic;
+    Particle cam_particle;
 
     Player player;
 }
@@ -88,7 +90,7 @@ void recalc_particle_velocity(Particle *particles, unsigned int count,
         part.dy *= w;
         part.dz *= w;
 
-        for (unsigned int p_other = 0; p_other < count + 1; ++p_other) {
+        for (unsigned int p_other = 0; p_other < count + 2; ++p_other) {
             if (p_other == p) {
                 continue;
             }
@@ -162,6 +164,11 @@ void display() {
             gluSphere(quadratic, 0.625f, 8, 8);
         glPopMatrix();
     }
+    glPushMatrix();
+        glTranslatef(cam_particle.x, cam_particle.y, cam_particle.z); 
+        glRotatef(angle, 0.0, 0.0, 1.0);
+        gluSphere(quadratic, 0.625f, 8, 8);
+    glPopMatrix();
     angle += 0.15;
 
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, vbo);
@@ -267,6 +274,29 @@ void process_keys() {
     }
 }
 
+void init_cam_particle() {
+    cam_particle.x = 0.0f;
+    cam_particle.y = 0.0f;
+    cam_particle.z = -200.0f;
+
+    cam_particle.dx = 0;
+    cam_particle.dy = 0;
+    cam_particle.dz = 0;
+}
+
+void process_cam_particle(float dt) {
+    cam_particle.x += cam_particle.dx * dt;
+    cam_particle.y += cam_particle.dy * dt;
+    cam_particle.z += cam_particle.dz * dt;
+
+    float box_limit = half_len + 20.0;
+    if (abs(cam_particle.x) >= box_limit || 
+            abs(cam_particle.y) >= box_limit ||
+            abs(cam_particle.z) >= half_len + box_limit) {
+        init_cam_particle();
+    }
+}
+
 void update() {
     process_keys();
 
@@ -301,13 +331,16 @@ void update() {
 
     float w = 0.9999, e0 = 1e-3, dt = 0.01, k = 50.0;
 
+    process_cam_particle(dt);
+
     cudaMemcpy(d_particles, particles.data(), sizeof(Particle) * particles.size(), cudaMemcpyHostToDevice);
     Particle player_particle;
     player_particle.x = player.x;
     player_particle.y = player.y;
     player_particle.z = player.z;
     player_particle.q = 10;
-    cudaMemcpy(d_particles + particles.size(), &player_particle, sizeof(Particle), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_particles + particles.size(), &cam_particle, sizeof(Particle), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_particles + particles.size() + 1, &player_particle, sizeof(Particle), cudaMemcpyHostToDevice);
 
     recalc_particle_velocity<<<256, 256>>>(d_particles, particles.size(), w, e0, dt, k);
 
@@ -334,6 +367,20 @@ void mouse(int x, int y) {
         player.dyaw -= dx;
         player.dpitch -= dy;
     }
+}
+
+void mouse_press(int button, int state, int x, int y) {
+    cam_particle.x = player.x;
+    cam_particle.y = player.y;
+    cam_particle.z = player.z;
+
+    float speed = 30.0;
+    float cos_pitch = cos(player.pitch);
+    cam_particle.dx = speed * cos(player.yaw) * cos_pitch;
+    cam_particle.dy = speed * sin(player.yaw) * cos_pitch;
+    cam_particle.dz = speed * sin(player.pitch);
+
+    cam_particle.q = 50;
 }
 
 void reshape(int w_new, int h_new) {
@@ -373,6 +420,7 @@ int main(int argc, char *argv[]) {
     glutKeyboardFunc(key_down);
     glutKeyboardUpFunc(key_up);
     glutPassiveMotionFunc(mouse);
+    glutMouseFunc(mouse_press);
     glutReshapeFunc(reshape);
 
     // glutSetCursor(GLUT_CURSOR_NONE);
@@ -420,7 +468,9 @@ int main(int argc, char *argv[]) {
     glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
     particles = fill_with_random_particles(particle_count);
-    cudaMalloc(&d_particles, sizeof(Particle) * (particle_count + 1));
+    init_cam_particle();
+    // Two more for camera shot particle and for player particle
+    cudaMalloc(&d_particles, sizeof(Particle) * (particle_count + 2));
 
     glutMainLoop();
 }
