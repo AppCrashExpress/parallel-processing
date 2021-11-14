@@ -56,6 +56,8 @@ namespace {
     int w = 1024;
     int h = 648;
 
+    bool keystates[256] = {};
+
     const unsigned int particle_count = 4;
     const unsigned int floor_percision = 100;
     const float half_len = 15.0; // Half the length of cube edge
@@ -218,7 +220,56 @@ void display() {
     glutSwapBuffers();
 }
 
+void key_down(unsigned char key, int x, int y) {
+    keystates[key] = true;
+}
+
+void key_up(unsigned char key, int x, int y) {
+    keystates[key] = false;
+}
+
+void process_keys() {
+    float top_speed = player.top_speed;
+
+    if (keystates['w']) {
+        float cos_pitch = cos(player.pitch);
+        player.dx += cos(player.yaw) * cos_pitch * top_speed;
+        player.dy += sin(player.yaw) * cos_pitch * top_speed;
+        player.dz += sin(player.pitch) * top_speed;
+    }
+    if (keystates['s']) {
+        float cos_pitch = cos(player.pitch);
+        player.dx -= cos(player.yaw) * cos_pitch * top_speed;
+        player.dy -= sin(player.yaw) * cos_pitch * top_speed;
+        player.dz -= sin(player.pitch) * top_speed;
+    }
+    if (keystates['a']) {
+        player.dx += -sin(player.yaw) * top_speed;
+        player.dy += cos(player.yaw) * top_speed;
+    }
+    if (keystates['d']) {
+        player.dx += sin(player.yaw) * top_speed;
+        player.dy += -cos(player.yaw) * top_speed;
+    }
+    if (keystates[SPACEBAR]) {
+        player.dx = 0;
+        player.dy = 0;
+        player.dz = 0;
+    }
+    if (keystates[ESC]) {
+        cudaGraphicsUnregisterResource(res);
+        glDeleteTextures(1, &floor_texture);
+        glDeleteTextures(1, &quad_texture);
+        glDeleteBuffers(1, &vbo);
+        gluDeleteQuadric(quadratic);
+        cudaFree(d_particles);
+        exit(0);
+    }
+}
+
 void update() {
+    process_keys();
+
     const float speed = player.top_speed;
     float v = sqrt(player.dx * player.dx + player.dy * player.dy + player.dz * player.dz);
     if (v > speed) {
@@ -274,53 +325,6 @@ void update() {
     glutPostRedisplay();
 }
 
-void keys(unsigned char key, int x, int y) {
-    float top_speed = player.top_speed;
-
-    switch(key) {
-      case 'w': {
-        float cos_pitch = cos(player.pitch);
-        player.dx += cos(player.yaw) * cos_pitch * top_speed;
-        player.dy += sin(player.yaw) * cos_pitch * top_speed;
-        player.dz += sin(player.pitch) * top_speed;
-        break;
-      }
-      case 's': {
-        float cos_pitch = cos(player.pitch);
-        player.dx -= cos(player.yaw) * cos_pitch * top_speed;
-        player.dy -= sin(player.yaw) * cos_pitch * top_speed;
-        player.dz -= sin(player.pitch) * top_speed;
-        break;
-      }
-      case 'a': {
-        player.dx += -sin(player.yaw) * top_speed;
-        player.dy += cos(player.yaw) * top_speed;
-        break;
-      }
-      case 'd': {
-        player.dx += sin(player.yaw) * top_speed;
-        player.dy += -cos(player.yaw) * top_speed;
-        break;
-      }
-      case SPACEBAR: {
-        player.dx = 0;
-        player.dy = 0;
-        player.dz = 0;
-        break;
-      }
-      case ESC: {
-        cudaGraphicsUnregisterResource(res);
-        glDeleteTextures(1, &floor_texture);
-        glDeleteTextures(1, &quad_texture);
-        glDeleteBuffers(1, &vbo);
-        gluDeleteQuadric(quadratic);
-        cudaFree(d_particles);
-        exit(0);
-        break;
-      }
-    }
-}
-
 void mouse(int x, int y) {
     if (x != w/2 || y != h/2) {
         glutWarpPointer(w / 2, h / 2);
@@ -366,7 +370,8 @@ int main(int argc, char *argv[]) {
 
     glutIdleFunc(update);
     glutDisplayFunc(display);
-    glutKeyboardFunc(keys);
+    glutKeyboardFunc(key_down);
+    glutKeyboardUpFunc(key_up);
     glutPassiveMotionFunc(mouse);
     glutReshapeFunc(reshape);
 
