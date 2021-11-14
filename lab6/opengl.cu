@@ -111,9 +111,13 @@ void recalc_particle_velocity(Particle *particles, unsigned int count,
         part.dz += part.q*part.q * k * (part.z - 2 * half_len) / (sqr3(fabs(part.z - 2 * half_len)) + e0) * dt;
         part.dz += part.q*part.q * k * (part.z + 0.0) / (sqr3(fabs(part.z + 0.0)) + e0) * dt;
 
-        part.x += part.dx * dt;
-        part.y += part.dy * dt;
-        part.z += part.dz * dt;
+        float new_x = part.x + part.dx * dt;
+        float new_y = part.y + part.dy * dt;
+        float new_z = part.z + part.dz * dt;
+
+        part.x += part.dx * dt * (abs(new_x) < half_len - e0);
+        part.y += part.dy * dt * (abs(new_y) < half_len - e0);
+        part.z += part.dz * dt * (e0 < new_z && new_z < 2 * half_len - e0);
     }
 }
 
