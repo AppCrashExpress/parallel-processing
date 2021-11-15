@@ -26,6 +26,8 @@ struct Particle {
     float dz;
 
     float q;
+
+    int volt_colors;
 };
 
 struct Player {
@@ -60,7 +62,7 @@ namespace {
 
     bool keystates[256] = {};
 
-    const unsigned int particle_count = 50;
+    const unsigned int particle_count = 150;
     const unsigned int floor_percision = 100;
     const float half_len = 15.0; // Half the length of cube edge
 
@@ -169,14 +171,30 @@ void calc_floor(uchar4 *data, Particle *particles, unsigned int count,
         for (int j = idy; j < floor_percision; j += offsety) {
             float x = (2.0 * i / (floor_percision - 1.0) - 1.0) * half_len;
             float y = (2.0 * j / (floor_percision - 1.0) - 1.0) * half_len;
-            float voltage = 0;
+            float voltage[3] = {};
+
+
             for (unsigned int p = 0; p < count; ++p) {
                 Particle &part = particles[p];
-                voltage += part.q / (sqr(part.x - x) + sqr(part.y - y) + sqr(part.z - z_shift) + e0);
+                float volt = part.q / (sqr(part.x - x) + sqr(part.y - y) + sqr(part.z - z_shift) + e0);
+
+                bool red_bit   = (1 & part.volt_colors);
+                bool green_bit = (2 & part.volt_colors);
+                bool blue_bit  = (4 & part.volt_colors);
+                volt /= ( red_bit + green_bit + blue_bit ) / 2.0;
+                voltage[0] += red_bit   * volt;
+                voltage[1] += green_bit * volt;
+                voltage[2] += blue_bit  * volt;
             }
-            voltage += cam_part.q / (sqr(cam_part.x - x) + sqr(cam_part.y - y) + sqr(cam_part.z - z_shift) + e0);
-            voltage *= k;
-            data[j * floor_percision + i] = make_uchar4(min((int)voltage, 255), 0, 0, 255);
+            voltage[0] += cam_part.q / (sqr(cam_part.x - x) + sqr(cam_part.y - y) + sqr(cam_part.z - z_shift) + e0);
+            voltage[0] *= k;
+            voltage[1] *= k;
+            voltage[2] *= k;
+            data[j * floor_percision + i] = make_uchar4(
+                    min((int)voltage[0], 255),
+                    min((int)voltage[1], 255),
+                    min((int)voltage[2], 255),
+                    255);
         }
     }
 }
@@ -204,13 +222,13 @@ void display() {
         glPushMatrix();
             glTranslatef(p.x, p.y, p.z); 
             glRotatef(angle, 0.0, 0.0, 1.0);
-            gluSphere(quadratic, 0.625f, 8, 8);
+            gluSphere(quadratic, 0.625f, 32, 32);
         glPopMatrix();
     }
     glPushMatrix();
         glTranslatef(cam_particle.x, cam_particle.y, cam_particle.z); 
         glRotatef(angle, 0.0, 0.0, 1.0);
-        gluSphere(quadratic, 0.625f, 8, 8);
+        gluSphere(quadratic, 3.0f, 32, 32);
     glPopMatrix();
     angle += 0.15;
 
@@ -453,7 +471,9 @@ std::vector<Particle>
 fill_with_random_particles(unsigned int particle_count) {
     std::random_device rd;
     std::mt19937 gen(rd());
+    std::mt19937 int_gen(rd());
     std::uniform_real_distribution<float> dist(-half_len, half_len);
+    std::uniform_int_distribution<int> int_dist(1, 7);
 
     std::vector<Particle> particles(particle_count);
 
@@ -462,6 +482,7 @@ fill_with_random_particles(unsigned int particle_count) {
         p.y = dist(gen);
         p.z = half_len + dist(gen);
         p.q = 1;
+        p.volt_colors = int_dist(int_gen);
     }
 
     return particles;
