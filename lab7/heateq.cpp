@@ -172,9 +172,9 @@ int main(int argc, char **argv) {
 
     MPI_Status status;
 
-    double hx = 1.0f * l[x_dir] / (proc_size[x_dir] * pad_block_size[x_dir]);
-    double hy = 1.0f * l[y_dir] / (proc_size[y_dir] * pad_block_size[y_dir]);
-    double hz = 1.0f * l[z_dir] / (proc_size[z_dir] * pad_block_size[z_dir]);
+    double hx = 1.0f * l[x_dir] / (proc_size[x_dir] * block_size[x_dir]);
+    double hy = 1.0f * l[y_dir] / (proc_size[y_dir] * block_size[y_dir]);
+    double hz = 1.0f * l[z_dir] / (proc_size[z_dir] * block_size[z_dir]);
     double inv_hx2 = 1.0f / (hx * hx);
     double inv_hy2 = 1.0f / (hy * hy);
     double inv_hz2 = 1.0f / (hz * hz);
