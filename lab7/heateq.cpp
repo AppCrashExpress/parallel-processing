@@ -1,4 +1,5 @@
 #include <iostream>
+#include <fstream>
 #include <algorithm>
 #include <memory>
 #include "mpi.h"
@@ -355,8 +356,48 @@ int main(int argc, char **argv) {
         std::swap(old_grid, new_grid);
     }
 
+    if (id != 0) {
+        for (int z = 1; z < pad_block_size[z_dir] - 1; ++z) {
+            for (int y = 1; y < pad_block_size[y_dir] - 1; ++y) {
+                for (int x = 1; x < pad_block_size[x_dir] - 1; ++x) {
+                    edge_buff[x - 1] = new_grid[calc_1d(x, y, z)];
+                }
+                MPI_Send(edge_buff, block_size[x_dir], MPI_DOUBLE, 0, id, MPI_COMM_WORLD);
+            }
+        }
+    } else {
+        std::ofstream out_file(out_file_name);
+        out_file.setf(std::ios_base::scientific, std::ios_base::floatfield);
+
+        // god damn it
+        for (int zp = 0; zp < proc_size[z_dir]; ++zp) {
+            for (int z = 1; z < pad_block_size[z_dir] - 1; ++z) {
+                for (int yp = 0; yp < proc_size[y_dir]; ++yp) {
+                    for (int y = 1; y < pad_block_size[y_dir] - 1; ++y) {
+                        for (int xp = 0; xp < proc_size[x_dir]; ++xp) {
+                            int curr_id = calc_rank(xp, yp, zp);
+
+                            if (curr_id == 0) {
+                                for (int x = 1; x < pad_block_size[x_dir] - 1; ++x) {
+                                    edge_buff[x - 1] = new_grid[calc_1d(x, y, z)];
+                                }
+                            } else {
+                                MPI_Recv(edge_buff, block_size[x_dir], MPI_DOUBLE, curr_id, curr_id, MPI_COMM_WORLD, &status);
+                            }
+
+                            for (int x = 0; x < block_size[x_dir]; ++x) {
+                                out_file << edge_buff[x] << ' ';
+                            }
+                            out_file << '\n';
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     std::cout << id << '\n';
+    std::cout << proc_x << ' ' << proc_y << ' ' << proc_z << '\n';
     for (int z = 0; z < pad_block_size[z_dir]; ++z) {
         for (int y = 0; y < pad_block_size[y_dir]; ++y) {
             for (int x = 0; x < pad_block_size[x_dir]; ++x) {
