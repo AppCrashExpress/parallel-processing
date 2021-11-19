@@ -201,7 +201,6 @@ int main(int argc, char **argv) {
         }
 
         if (max_diff < eps) {
-            std::swap(old_grid, new_grid);
             break;
         }
 
@@ -395,19 +394,6 @@ int main(int argc, char **argv) {
             }
         }
     }
-
-    std::cout << id << '\n';
-    std::cout << proc_x << ' ' << proc_y << ' ' << proc_z << '\n';
-    for (int z = 0; z < pad_block_size[z_dir]; ++z) {
-        for (int y = 0; y < pad_block_size[y_dir]; ++y) {
-            for (int x = 0; x < pad_block_size[x_dir]; ++x) {
-                std::cout << old_grid[calc_1d(x, y, z)] << ' ';
-            }
-            std::cout << '\n';
-        }
-        std::cout << '\n';
-    }
-    std::cout << std::flush;
 
     MPI_Buffer_detach(&send_buffer, &buffer_size);
 
