@@ -1,13 +1,9 @@
 #include <iostream>
-#include <fstream>
 #include <algorithm>
-#include <memory>
 #include "mpi.h"
 
 #include <thrust/device_vector.h>
-#include <thrust/iterator/zip_iterator.h>
-#include <thrust/transform_reduce.h>
-#include <thrust/functional.h>
+#include <thrust/extrema.h>
 
 #define CSC(call)                                             \
 do {                                                          \
@@ -283,10 +279,6 @@ int main(int argc, char **argv) {
 
     auto calc_1d = [pad_block_size](int x, int y, int z) {
         return (z * pad_block_size[y_dir] + y) * pad_block_size[x_dir] + x;
-    };
-
-    auto calc_edge = [edge_side_len](int x, int y) {
-        return y * edge_side_len + x;
     };
 
     auto calc_rank = [proc_size](int x, int y, int z) {
