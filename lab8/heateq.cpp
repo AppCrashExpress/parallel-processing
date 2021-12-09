@@ -22,7 +22,7 @@ int main(int argc, char **argv) {
 
     int proc_size[3];
     int block_size[3];
-    std::string out_file_name;
+    char out_file_name[1024];
     double eps;
     double l[3];
     double u[7];
@@ -43,12 +43,13 @@ int main(int argc, char **argv) {
                  >> u0;
     }
 
-    MPI_Bcast(proc_size,  3, MPI_INT,    0, MPI_COMM_WORLD);
-    MPI_Bcast(block_size, 3, MPI_INT,    0, MPI_COMM_WORLD);
-    MPI_Bcast(&eps,       1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Bcast(l,          3, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Bcast(u,          6, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-    MPI_Bcast(&u0,        1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+    MPI_Bcast(proc_size,      3,     MPI_INT,     0,  MPI_COMM_WORLD);
+    MPI_Bcast(block_size,     3,     MPI_INT,     0,  MPI_COMM_WORLD);
+    MPI_Bcast(&eps,           1,     MPI_DOUBLE,  0,  MPI_COMM_WORLD);
+    MPI_Bcast(l,              3,     MPI_DOUBLE,  0,  MPI_COMM_WORLD);
+    MPI_Bcast(u,              6,     MPI_DOUBLE,  0,  MPI_COMM_WORLD);
+    MPI_Bcast(&u0,            1,     MPI_DOUBLE,  0,  MPI_COMM_WORLD);
+    MPI_Bcast(out_file_name,  1024,  MPI_CHAR,    0,  MPI_COMM_WORLD);
 
     /*
      * z
@@ -375,8 +376,6 @@ int main(int argc, char **argv) {
         }
     }
 
-    std::cerr << char_buff << std::endl;
-
     MPI_Datatype cell;
     MPI_Type_contiguous(n_size, MPI_CHAR, &cell);
     MPI_Type_commit(&cell);
@@ -397,25 +396,20 @@ int main(int argc, char **argv) {
     const int y_first_i = block_size[y_dir] * proc_y;
     const int z_first_i = block_size[z_dir] * proc_z;
 
-    std::cerr << id << std::endl;
     MPI_Aint global_offset = face_size * z_first_i + line_size * y_first_i + x_first_i;
     for (int z = 0; z < block_size[z_dir]; ++z) {
         for (int y = 0; y < block_size[y_dir]; ++y) {
             int i = z * block_size[y_dir] + y;
             disp[i] = y * line_size + z * face_size;
-            std::cerr << disp[i] << ' ';
         }
     }
-    std::cerr << std::endl;
 
     MPI_Type_indexed(x_line_count, lengths, disp, cell, &something_complex_idk);
     MPI_Type_commit(&something_complex_idk);
 
     MPI_File fp;
-    MPI_File_delete("data.out", MPI_INFO_NULL);
-    std::cerr << "Pre open" << std::endl;
-    MPI_File_open(MPI_COMM_WORLD, "data.out", MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &fp);
-    std::cerr << "Post open" << std::endl;
+    MPI_File_delete(out_file_name, MPI_INFO_NULL);
+    MPI_File_open(MPI_COMM_WORLD, out_file_name, MPI_MODE_CREATE | MPI_MODE_WRONLY, MPI_INFO_NULL, &fp);
 
 	MPI_File_set_view(fp, global_offset * n_size, cell, something_complex_idk, "native", MPI_INFO_NULL);
     MPI_File_write_all(fp, char_buff, buff_size, MPI_CHAR, &status);
