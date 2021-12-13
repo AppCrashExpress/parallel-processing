@@ -2,6 +2,7 @@
 #include <fstream>
 #include <algorithm>
 #include <memory>
+#include <omp.h>
 #include "mpi.h"
 
 int main(int argc, char **argv) {
@@ -75,6 +76,10 @@ int main(int argc, char **argv) {
 
     auto calc_1d = [pad_block_size](int x, int y, int z) {
         return (z * pad_block_size[y_dir] + y) * pad_block_size[x_dir] + x;
+    };
+
+    auto calc_1d_o = [pad_block_size](int x, int y, int z) {
+        return ((z + 1) * pad_block_size[y_dir] + (y + 1)) * pad_block_size[x_dir] + (x + 1);
     };
 
     auto calc_rank = [proc_size](int x, int y, int z) {
@@ -280,17 +285,27 @@ int main(int argc, char **argv) {
     while (true) {
         double max_diff = 0;
 
-        for (int z = 1; z < pad_block_size[z_dir] - 1; ++z) {
-            for (int y = 1; y < pad_block_size[y_dir] - 1; ++y) {
-                for (int x = 1; x < pad_block_size[x_dir] - 1; ++x) {
-                    double val = (
-                        (old_grid[calc_1d(x+1, y,   z  )] + old_grid[calc_1d(x-1, y,   z  )]) * inv_hx2 +
-                        (old_grid[calc_1d(x,   y+1, z  )] + old_grid[calc_1d(x,   y-1, z  )]) * inv_hy2 +
-                        (old_grid[calc_1d(x,   y,   z+1)] + old_grid[calc_1d(x,   y,   z-1)]) * inv_hz2
-                    ) / (2 * (inv_hx2 + inv_hy2 + inv_hz2));
-                    new_grid[calc_1d(x, y, z)] = val;
-                    max_diff = std::max( max_diff, std::abs(val - old_grid[calc_1d(x, y, z)]) );
-                }
+        #pragma omp parallel reduction(max:max_diff)
+        {
+            int thread_i = omp_get_thread_num();
+            int offset = omp_get_num_threads();
+
+            int grid_size = block_size[x_dir] * block_size[y_dir] * block_size[z_dir];
+
+            int x, y, z;
+
+            for (size_t i = thread_i; i < grid_size; i += offset) {
+                x =  i % block_size[x_dir];
+                y = (i / block_size[x_dir]) % block_size[y_dir];
+                z =  i / (block_size[x_dir] * block_size[y_dir]);
+
+                double val = (
+                        (old_grid[calc_1d_o(x+1, y,   z  )] + old_grid[calc_1d_o(x-1, y,   z  )]) * inv_hx2 +
+                        (old_grid[calc_1d_o(x,   y+1, z  )] + old_grid[calc_1d_o(x,   y-1, z  )]) * inv_hy2 +
+                        (old_grid[calc_1d_o(x,   y,   z+1)] + old_grid[calc_1d_o(x,   y,   z-1)]) * inv_hz2
+                        ) / (2 * (inv_hx2 + inv_hy2 + inv_hz2));
+                new_grid[calc_1d_o(x, y, z)] = val;
+                max_diff = std::max( max_diff, std::abs(val - old_grid[calc_1d_o(x, y, z)]) );
             }
         }
 
