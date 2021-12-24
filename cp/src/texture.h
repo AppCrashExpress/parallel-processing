@@ -15,11 +15,8 @@ struct Pixel {
         refract = 0.0f;
     }
 
-    Pixel(unsigned char r,
-          unsigned char g,
-          unsigned char b,
-          float reflect,
-          float refract) {
+    Pixel(float r, float g, float b,
+          float reflect, float refract) {
         this->r = r;
         this->g = g;
         this->b = b;
@@ -27,9 +24,9 @@ struct Pixel {
         this->refract = refract;
     }
 
-    unsigned char r;
-    unsigned char g;
-    unsigned char b;
+    float r;
+    float g;
+    float b;
     float reflect;
     float refract;
 };
