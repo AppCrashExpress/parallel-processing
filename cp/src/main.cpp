@@ -2,6 +2,7 @@
 #include <vector>
 #include <cmath>
 #include <memory>
+#include <omp.h>
 
 #include "tgaimage.h"
 #include "linear.h"
@@ -207,7 +208,9 @@ Vector3D cast_ray(Ray& ray, Ray& reflection_ray) {
 
 void
 do_rays(Ray* cur_rays, Ray* next_rays, size_t cur_size){
-    for(size_t i = 0 ; i < cur_size; ++i) {
+    size_t i;
+    #pragma omp parallel for private(i) shared(cur_rays, next_rays)
+    for(i = 0 ; i < cur_size; ++i) {
         cast_ray(cur_rays[i], next_rays[i]);
     }
 }
@@ -215,8 +218,9 @@ do_rays(Ray* cur_rays, Ray* next_rays, size_t cur_size){
 
 void
 do_colors(Vector3D* image_buff, Ray* rays,const int rays_size, const int h){
-
-    for (int i = 0; i < rays_size; ++i){
+    int i;
+    #pragma omp parallel for private(i) shared(image_buff, rays)
+    for (i = 0; i < rays_size; ++i){
         int x = rays[i].x, 
             y = rays[i].y;
 
@@ -272,8 +276,10 @@ void render(const Vector3D& pc,
     std::unique_ptr<Ray[]>      next_rays  (new Ray[pixel_cnt]);
 
 
-    for (int i = 0; i < w; ++i) {
-        for (int j = 0; j < h; ++j) {
+    int i, j;
+    #pragma omp parallel for private(i, j) shared(cur_rays)
+    for (i = 0; i < w; ++i) {
+        for (j = 0; j < h; ++j) {
             Vector3D v = Vector3D(-1.0f + dw * i, (-1.0f + dh * j) * h / w, z);
             Vector3D dir = (v * look_matr).get_norm();
             cur_rays[i*h+j] = Ray(pc, dir, j, i);
