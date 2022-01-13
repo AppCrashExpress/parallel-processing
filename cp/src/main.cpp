@@ -286,18 +286,14 @@ void render(const Vector3D& pc,
     for (int depth = 0; depth < max_depth; ++depth) {
     
         do_rays (cur_rays.get(), next_rays.get(), cur_size);
-
-
         do_colors(image_buff.get(),cur_rays.get(), cur_size, h);
         
         cur_size = compact(next_rays.get(), cur_size);
         
         std::swap(cur_rays, next_rays);
-
-        set_image(image_buff.get(), image, w,h);
-
     }
-    
+
+    set_image(image_buff.get(), image, w,h);
 }
 
 int main() {
@@ -310,7 +306,6 @@ int main() {
 
     int max_depth = 3;
     for (int k = 0; k < 10; ++k) {
-        max_depth++;
         Vector3D pc = Vector3D( 2.0f +3.0f*sin(k*0.2f),  3.0f + 3.0f*cos(k*0.1f), 3.0f + 3.0f*sin(k*0.1f));
         Vector3D pv = Vector3D(0.0f, 0.0f, 0.0f);
         render(pc, pv, w, h, 120.0, image, max_depth);
