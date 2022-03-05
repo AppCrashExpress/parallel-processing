@@ -3,6 +3,7 @@
 #include <cmath>
 #include <memory>
 #include <omp.h>
+#include "mpi.h"
 
 #include "tgaimage.h"
 #include "linear.h"
@@ -302,7 +303,7 @@ void render(const Vector3D& pc,
     set_image(image_buff.get(), image, w,h);
 }
 
-int main() {
+int main(int argc, char **argv) {
     int w = 640;
     int h = 480;
     char buff[256];
@@ -310,8 +311,16 @@ int main() {
 
     build_space();
 
+    MPI_Init(&argc, &argv);
+
+    int id;
+    MPI_Comm_rank(MPI_COMM_WORLD, &id);
+
+    int proc_count;
+    MPI_Comm_size(MPI_COMM_WORLD, &proc_count);
+
     int max_depth = 3;
-    for (int k = 0; k < 10; ++k) {
+    for (int k = id; k < 10; k += proc_count) {
         Vector3D pc = Vector3D( 2.0f +3.0f*sin(k*0.2f),  3.0f + 3.0f*cos(k*0.1f), 3.0f + 3.0f*sin(k*0.1f));
         Vector3D pv = Vector3D(0.0f, 0.0f, 0.0f);
         render(pc, pv, w, h, 120.0, image, max_depth);
@@ -320,4 +329,6 @@ int main() {
         image.write_tga_file(buff, true, false);
         printf("%d: %s\n", k, buff);        
     }
+
+    MPI_Finalize();
 }

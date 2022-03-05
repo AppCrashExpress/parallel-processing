@@ -1,4 +1,4 @@
-CC:=g++
+CC:=mpic++
 CFLAGS:=-O3 -fopenmp -pedantic
 TARGET:=renderer
 
@@ -10,7 +10,7 @@ OBJS := $(patsubst ${SRC_DIR}/%.cpp, ${OBJ_DIR}/%.o, ${SRCS})
 
 
 ${TARGET}: ${OBJS}
-	g++ ${CFLAGS} -o $@ $^
+	${CC} ${CFLAGS} -o $@ $^
 
 ${OBJ_DIR}/%.o: ${SRC_DIR}/%.cpp
 	@mkdir -p $(@D)
